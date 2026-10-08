@@ -12,8 +12,7 @@ struct ContentView: View {
     var body: some View {
         // ワールドトラッキングは A9 以降のチップを搭載した実機でのみ動作する（シミュレータは非対応）
         if ARWorldTrackingConfiguration.isSupported {
-            ARViewContainer()
-                .ignoresSafeArea()
+            ARCaptureView()
         } else {
             ContentUnavailableView(
                 "ARに対応していません",
