@@ -17,9 +17,21 @@ ARApp/
 ├── App/          エントリポイント（ARAppApp.swift）
 ├── Models/       データ定義のみ（例：Monster）。UI やフレームワークに依存しない
 ├── ViewModels/   画面の状態とロジック（@Observable）
-├── Views/        SwiftUI の View、UIViewRepresentable
+├── Views/        SwiftUI の View
+│   └── AR/       ARView まわり（RealityKit / ARKit を扱うのはここだけ）
 └── Services/     外部とのやり取り（BLE / RSSI、将来のサーバー通信）
 ```
+
+### Views/AR の責務分担
+
+| ファイル | 担当 |
+|---|---|
+| `ARViewContainer` | SwiftUI と ARView の橋渡し（`UIViewRepresentable`）、AR セッションの run / pause |
+| `ARSceneController` | アンカーやエンティティの配置、タップなどシーンのイベントを ViewModel に伝える |
+| `MonsterEntity` など | 3D の見た目を作るだけ。配置する場所やタイミングは決めない |
+
+`ARSceneController` は `UIViewRepresentable` の Coordinator として使う（`makeCoordinator()` の戻り値）。
+SwiftUI の決まりとしての名前ではなく、役割がわかる名前を付けている。
 
 空のフォルダは作らない。最初のファイルが必要になった時点でフォルダを作る。
 
@@ -28,8 +40,9 @@ ARApp/
 - **ViewModel は `@Observable` クラス**で実装する（`ObservableObject` は使わない）。
 - **ViewModel に `ARView` や `UIView` などの UIKit オブジェクトを持たせない。**
   - ViewModel は「どのモンスターを出すか」「捕獲状態」などの状態だけを持つ。
-  - 3D エンティティの配置、アンカー、タップ検知など ARView の命令的な操作は、`ARViewContainer` とその Coordinator が担当する。
-  - ARView 側から ViewModel への通知は Coordinator 経由で行う。
+  - 3D エンティティの配置、アンカー、タップ検知など ARView の命令的な操作は `ARSceneController` が担当する。
+  - ARView 側から ViewModel への通知は `ARSceneController` 経由で行う。
+- **ViewModel の状態は `private(set)` にし、外からはメソッドを呼んで変更する。** 状態を変えるのは ViewModel 自身だけにする。
 - **Service は protocol で定義し、ViewModel に外から渡す。**
   - ESP32 がなくてもダミー実装で開発やテストができるようにするため。
 - AR セッションのライフサイクル（`run` / `pause`）は `ARViewContainer` で管理する（`makeUIView` で run、`dismantleUIView` で pause）。
