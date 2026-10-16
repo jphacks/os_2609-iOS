@@ -10,6 +10,7 @@ import Supabase
 /// テーブルと関数の定義は リポジトリ直下の supabase/schema.sql にある
 /// - 相手探し：join_battle 関数を呼ぶ。待っている人がいれば入り、いなければ部屋を作って待つ
 /// - 攻撃：battle_moves テーブルに 1 ターンぶんずつ書き込み、相手の書き込みを Realtime で受け取る
+/// - Realtime がつながらない・取りこぼしたときは、2 秒ごとにデータベースを直接見て代わりに受け取る
 final class SupabaseBattleService: BattleService {
     enum ServiceError: Error {
         /// 部屋を作って待っても、相手が来なかった
@@ -77,7 +78,7 @@ final class SupabaseBattleService: BattleService {
 
         let isPlayer1 = row.player1ID == playerID
         opponentMonsterName = isPlayer1 ? row.player2Monster : row.player1Monster
-        try await startListening(battleID: row.id)
+        startListening(battleID: row.id)
 
         // 自分が部屋を作った場合は、相手が入ってくるまで待つ
         // Realtime を取りこぼしたときのために、ときどきデータベースも直接見る（購読を始める前に入ってきた場合もここで気づく）
@@ -184,7 +185,9 @@ final class SupabaseBattleService: BattleService {
     }
 
     /// 対戦の変更（相手が入った・終わった）と、相手の攻撃を Realtime で受け取り始める
-    private func startListening(battleID: UUID) async throws {
+    /// 購読はバックグラウンドで行い、終わるのを待たない
+    /// 会場の Wi-Fi などで Realtime（WebSocket）がつながらなくても、データベースの定期確認で代わりに受け取れるので対戦は続けられる
+    private func startListening(battleID: UUID) {
         let channel = client.channel("battle-\(battleID.uuidString)")
         // 受け取りたい変更は、購読を始める前に登録しておく
         let battleUpdates = channel.postgresChange(
@@ -193,11 +196,16 @@ final class SupabaseBattleService: BattleService {
         let moveInserts = channel.postgresChange(
             InsertAction.self, table: "battle_moves", filter: .eq("battle_id", value: battleID)
         )
-        // 購読に失敗したりキャンセルされたりしても leave() で閉じられるよう、先に持っておく
+        // 購読の途中で対戦をやめても leave() で閉じられるよう、先に持っておく
         self.channel = channel
-        try await channel.subscribeWithError()
 
         listenTask = Task { [weak self] in
+            do {
+                try await channel.subscribeWithError()
+            } catch {
+                print("Realtime に接続できませんでした。データベースの定期確認だけで続けます: \(error)")
+                return
+            }
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { @MainActor in
                     for await update in battleUpdates {
