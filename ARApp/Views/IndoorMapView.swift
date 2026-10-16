@@ -9,6 +9,8 @@ import SwiftUI
 /// 位置は `MapPosition`（0〜1 の割合）を、実際の表示サイズに掛けて求める
 struct IndoorMapView: View {
     let locations: [Location]
+    /// つながっている地点の ID の組。通路として描く
+    var corridors: [(from: String, to: String)] = []
     var monsterSpots: [MonsterSpot] = []
     var raidSpots: [RaidSpot] = []
     let currentLocation: Location?
@@ -17,7 +19,7 @@ struct IndoorMapView: View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack {
-                MapBackgroundView(locations: locations, corridors: Location.corridors, size: size)
+                MapBackgroundView(locations: locations, corridors: corridors, size: size)
 
                 ForEach(locations) { location in
                     LocationMarkerView(location: location, isCurrent: location.id == currentLocation?.id)
@@ -98,17 +100,35 @@ private struct LocationMarkerView: View {
     let isCurrent: Bool
 
     var body: some View {
-        VStack(spacing: 2) {
-            Circle()
-                .fill(isCurrent ? .white : .white.opacity(0.7))
-                .frame(width: 10, height: 10)
+        // 丸を地点の位置に置き、名前はその下に重ねる
+        Circle()
+            .fill(isCurrent ? .white : .white.opacity(0.7))
+            .frame(width: 10, height: 10)
+            .overlay(alignment: .top) {
+                label
+                    .fixedSize()
+                    // 現在地ではプレイヤーアイコンに隠れないよう、さらに下に出す
+                    .offset(y: isCurrent ? 24 : 12)
+            }
+    }
+
+    /// 現在地の名前は青いバッジにして目立たせる
+    @ViewBuilder
+    private var label: some View {
+        if isCurrent {
+            Text(location.name)
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(.blue, in: Capsule())
+                .shadow(radius: 2)
+        } else {
             Text(location.name)
                 .font(.caption2.bold())
                 .foregroundStyle(.white)
                 .shadow(radius: 1)
         }
-        // 目印の丸が場所の位置に来るように、名前のぶん下にずらす
-        .offset(y: 8)
     }
 }
 
@@ -177,6 +197,7 @@ private struct PlayerMarkerView: View {
 #Preview {
     IndoorMapView(
         locations: Location.registered,
+        corridors: Location.corridors,
         monsterSpots: MonsterSpot.samples,
         raidSpots: RaidSpot.samples,
         currentLocation: Location.registered[0]
