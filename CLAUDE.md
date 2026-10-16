@@ -19,15 +19,19 @@ SwiftUI + ARKit + RealityKit で作る iOS 向け AR モンスター捕獲アプ
 ARApp/
 ├── App/          エントリポイント（ARAppApp.swift）
 ├── Models/       データ定義のみ（例：Monster）。UI やフレームワークに依存しない
+│   └── Battle/   バトルの中だけで使うデータ（攻撃の種類、ゲージ判定など）
 ├── ViewModels/   画面の状態とロジック（@Observable）
-├── Views/        SwiftUI の View
-│   └── AR/       ARView まわり（RealityKit / ARKit を扱うのはここだけ）
+├── Views/        SwiftUI の View。ContentView 以外は機能ごとのフォルダに置く
+│   ├── Map/      マップ画面（屋内マップ、現在地）
+│   ├── Capture/  AR 捕獲画面
+│   │   └── AR/   ARView まわり（RealityKit / ARKit を扱うのはここだけ）
+│   └── Battle/   タイミングバトル画面
 ├── Services/     外部とのやり取り（BLE / RSSI、将来のサーバー通信）
 └── Resources/    アプリに同梱するファイル
     └── Models/   モンスターの 3D モデル（USDZ）。Kenney「Cube Pets」（CC0）を OBJ から変換したもの
 ```
 
-### Views/AR の責務分担
+### Views/Capture/AR の責務分担
 
 | ファイル | 担当 |
 |---|---|
@@ -39,6 +43,14 @@ ARApp/
 SwiftUI の決まりとしての名前ではなく、役割がわかる名前を付けている。
 
 空のフォルダは作らない。最初のファイルが必要になった時点でフォルダを作る。
+
+### フォルダの分け方
+
+iOS に慣れていないメンバーでも目的のファイルを見つけやすいように、次のように分ける。
+
+- **Views は機能ごとのフォルダに分ける**（`Map/`、`Capture/`、`Battle/`）。新しい画面を作るときは、その機能のフォルダを作って置く。
+- **Models は、1 つの機能の中だけで使うデータが多いときだけ、機能名のフォルダにまとめる**（例：`Models/Battle/`）。`Monster` や `Location` のように複数の画面で使うデータは `Models/` 直下に置く。
+- **ViewModels は分けない。** ファイル数が少なく、名前でどの画面用かわかるため。
 
 ### ルール
 
