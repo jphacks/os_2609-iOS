@@ -236,11 +236,11 @@ final class BattleViewModel {
         }
     }
 
-    /// 通信に失敗したら対戦をやめてロビーに戻る
+    /// 相手が見つからない・相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る
     private func fail(_ error: Error) {
         print("対戦の通信に失敗しました: \(error)")
         leaveBattle()
-        errorMessage = "通信に失敗しました。もう一度お試しください"
+        errorMessage = "対戦できませんでした。もう一度お試しください"
     }
 
     private static func hitStopDuration(for judgement: TimingJudgement) -> TimeInterval {

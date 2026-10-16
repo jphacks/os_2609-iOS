@@ -1,0 +1,248 @@
+//
+//  SupabaseBattleService.swift
+//  ARApp
+//
+
+import Foundation
+import Supabase
+
+/// Supabase で対戦相手とやり取りする
+/// テーブルと関数の定義は リポジトリ直下の supabase/schema.sql にある
+/// - 相手探し：join_battle 関数を呼ぶ。待っている人がいれば入り、いなければ部屋を作って待つ
+/// - 攻撃：battle_moves テーブルに 1 ターンぶんずつ書き込み、相手の書き込みを Realtime で受け取る
+final class SupabaseBattleService: BattleService {
+    enum ServiceError: Error {
+        /// 部屋を作って待っても、相手が来なかった
+        case noOpponent
+        /// 相手の攻撃が一定時間届かない、または相手が対戦をやめた
+        case opponentLeft
+        /// 届いたモンスター名や判定が、アプリの知らない値だった
+        case invalidData
+    }
+
+    /// 部屋を作ってからこの時間待っても相手が来なければ、あきらめる（秒）
+    /// join_battle は 2 分より古い部屋を使わないので、それより少し短くする
+    private static let matchingTimeout: TimeInterval = 110
+    /// 相手の攻撃をこの時間待っても届かなければ、相手がいなくなったとみなす（秒）
+    private static let opponentTimeout: TimeInterval = 60
+    /// Realtime を取りこぼしたときのために、データベースを直接見に行く間隔（秒）
+    private static let fallbackFetchInterval: TimeInterval = 2
+
+    private let client: SupabaseClient
+    /// 自分を見分ける ID。ログインは使わず、アプリを起動するたびに作り直す
+    private let playerID = UUID()
+
+    /// 参加中の対戦の ID
+    private var battleID: UUID?
+    /// 参加中の対戦の変更を受け取る Realtime のチャンネル
+    private var channel: RealtimeChannelV2?
+    private var listenTask: Task<Void, Never>?
+    /// 受け取った相手の攻撃（ターン番号ごと）
+    private var opponentMoves: [Int: BattleMove] = [:]
+    /// 相手が入ってきたら入る、相手のモンスター名
+    private var opponentMonsterName: String?
+    /// 相手が対戦をやめたら true
+    private var isOpponentGone = false
+
+    init(url: URL, anonKey: String) {
+        client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey)
+    }
+
+    func findOpponent(locationID: String, monster: Monster) async throws -> BattleMatch {
+        await leave()
+        let row: BattleRow = try await client
+            .rpc("join_battle", params: JoinBattleParams(locationID: locationID, playerID: playerID, monster: monster.modelName))
+            .execute()
+            .value
+        battleID = row.id
+        let isPlayer1 = row.player1ID == playerID
+        opponentMonsterName = isPlayer1 ? row.player2Monster : row.player1Monster
+
+        try await startListening(battleID: row.id)
+
+        // 自分が部屋を作った場合は、相手が入ってくるまで待つ
+        // 購読を始める前に入ってきた場合に備えて、もう一度データベースも見る
+        if opponentMonsterName == nil {
+            opponentMonsterName = try await fetchBattle(id: row.id).player2Monster
+        }
+        let deadline = Date.now.addingTimeInterval(Self.matchingTimeout)
+        while opponentMonsterName == nil {
+            guard Date.now < deadline else {
+                await leave()
+                throw ServiceError.noOpponent
+            }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+
+        guard let name = opponentMonsterName, let opponent = Monster.named(name) else {
+            throw ServiceError.invalidData
+        }
+        return BattleMatch(id: row.id.uuidString, myMonster: monster, opponentMonster: opponent)
+    }
+
+    func send(_ move: BattleMove, turn: Int) async throws {
+        guard let battleID else { return }
+        let row = MoveRow(
+            battleID: battleID,
+            playerID: playerID,
+            turn: turn,
+            attackType: move.attackType.rawValue,
+            judgements: move.judgements.map(\.rawValue)
+        )
+        try await client.from("battle_moves").insert(row).execute()
+    }
+
+    func opponentMove(turn: Int) async throws -> BattleMove {
+        guard let battleID else { throw ServiceError.opponentLeft }
+        let deadline = Date.now.addingTimeInterval(Self.opponentTimeout)
+        var nextFetch = Date.now.addingTimeInterval(Self.fallbackFetchInterval)
+
+        while Date.now < deadline {
+            if let move = opponentMoves[turn] { return move }
+            if isOpponentGone { throw ServiceError.opponentLeft }
+
+            // Realtime で届かないままのときは、データベースを直接見る
+            if Date.now >= nextFetch {
+                try await fetchOpponentMoves(battleID: battleID)
+                isOpponentGone = try await fetchBattle(id: battleID).status == "finished"
+                nextFetch = Date.now.addingTimeInterval(Self.fallbackFetchInterval)
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw ServiceError.opponentLeft
+    }
+
+    func leave() async {
+        // 先に状態を空にしてから通信する。通信を待っている間に次の相手探しが始まっても、新しい対戦に触れないようにする
+        let leavingBattleID = battleID
+        let leavingChannel = channel
+        listenTask?.cancel()
+        listenTask = nil
+        channel = nil
+        battleID = nil
+        opponentMoves = [:]
+        opponentMonsterName = nil
+        isOpponentGone = false
+
+        if let leavingChannel {
+            await client.removeChannel(leavingChannel)
+        }
+        // 相手待ちの部屋が残らないように、対戦を終わったことにする。対戦中なら相手にも伝わる
+        if let leavingBattleID {
+            _ = try? await client
+                .from("battles")
+                .update(["status": "finished"])
+                .eq("id", value: leavingBattleID)
+                .execute()
+        }
+    }
+
+    /// 対戦の変更（相手が入った・終わった）と、相手の攻撃を Realtime で受け取り始める
+    private func startListening(battleID: UUID) async throws {
+        let channel = client.channel("battle-\(battleID.uuidString)")
+        // 受け取りたい変更は、購読を始める前に登録しておく
+        let battleUpdates = channel.postgresChange(
+            UpdateAction.self, table: "battles", filter: .eq("id", value: battleID)
+        )
+        let moveInserts = channel.postgresChange(
+            InsertAction.self, table: "battle_moves", filter: .eq("battle_id", value: battleID)
+        )
+        try await channel.subscribeWithError()
+        self.channel = channel
+
+        listenTask = Task { [weak self] in
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { @MainActor in
+                    for await update in battleUpdates {
+                        guard let row = try? update.decodeRecord(as: BattleRow.self, decoder: JSONDecoder()) else { continue }
+                        self?.receive(row)
+                    }
+                }
+                group.addTask { @MainActor in
+                    for await insert in moveInserts {
+                        guard let row = try? insert.decodeRecord(as: MoveRow.self, decoder: JSONDecoder()) else { continue }
+                        self?.receive(row)
+                    }
+                }
+            }
+        }
+    }
+
+    private func receive(_ row: BattleRow) {
+        if row.player1ID == playerID, let name = row.player2Monster {
+            opponentMonsterName = name
+        }
+        if row.status == "finished" {
+            isOpponentGone = true
+        }
+    }
+
+    private func receive(_ row: MoveRow) {
+        guard row.playerID != playerID,
+              let attackType = AttackType(rawValue: row.attackType) else { return }
+        let judgements = row.judgements.compactMap(TimingJudgement.init(rawValue:))
+        opponentMoves[row.turn] = BattleMove(attackType: attackType, judgements: judgements)
+    }
+
+    private func fetchBattle(id: UUID) async throws -> BattleRow {
+        try await client.from("battles").select().eq("id", value: id).single().execute().value
+    }
+
+    private func fetchOpponentMoves(battleID: UUID) async throws {
+        let rows: [MoveRow] = try await client
+            .from("battle_moves")
+            .select()
+            .eq("battle_id", value: battleID)
+            .neq("player_id", value: playerID)
+            .execute()
+            .value
+        rows.forEach(receive)
+    }
+}
+
+// MARK: - テーブルの行（supabase/schema.sql の列と対応する）
+
+nonisolated private struct BattleRow: Codable, Sendable {
+    let id: UUID
+    let status: String
+    let player1ID: UUID
+    let player1Monster: String
+    let player2ID: UUID?
+    let player2Monster: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status
+        case player1ID = "player1_id"
+        case player1Monster = "player1_monster"
+        case player2ID = "player2_id"
+        case player2Monster = "player2_monster"
+    }
+}
+
+nonisolated private struct MoveRow: Codable, Sendable {
+    let battleID: UUID
+    let playerID: UUID
+    let turn: Int
+    let attackType: String
+    let judgements: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case battleID = "battle_id"
+        case playerID = "player_id"
+        case turn
+        case attackType = "attack_type"
+        case judgements
+    }
+}
+
+nonisolated private struct JoinBattleParams: Encodable, Sendable {
+    let locationID: String
+    let playerID: UUID
+    let monster: String
+
+    enum CodingKeys: String, CodingKey {
+        case locationID = "p_location_id"
+        case playerID = "p_player_id"
+        case monster = "p_monster"
+    }
+}

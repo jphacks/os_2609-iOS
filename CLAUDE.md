@@ -26,7 +26,7 @@ ARApp/
 │   ├── Capture/  AR 捕獲画面
 │   │   └── AR/   ARView まわり（RealityKit / ARKit を扱うのはここだけ）
 │   └── Battle/   タイミングバトル画面
-├── Services/     外部とのやり取り（BLE / RSSI、将来のサーバー通信）
+├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦）
 └── Resources/    アプリに同梱するファイル
     └── Models/   モンスターの 3D モデル（USDZ）。Kenney「Cube Pets」（CC0）を OBJ から変換したもの
 ```
@@ -79,6 +79,8 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
 - Info.plist は自動生成（`GENERATE_INFOPLIST_FILE = YES`）。キーを追加するときは pbxproj の `INFOPLIST_KEY_*` ビルド設定を使う。
 - デプロイメントターゲットは iOS 26.2。デフォルトのアクター隔離は `MainActor`。
 - AR は実機でのみ動作する。シミュレータでは非対応メッセージが表示される。
+- 対戦は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/schema.sql`。
+  - 接続先は `Services/SupabaseConfig.swift` に書く。空のままなら CPU が相手になる `DummyBattleService` を使う。
 
 ## ビルド確認
 

@@ -37,9 +37,13 @@ struct ContentView: View {
         #endif
     }
 
-    /// 今は Supabase につないでいないので、CPU が相手になるダミーを使う
+    /// SupabaseConfig に接続先が書いてあれば Supabase で対戦し、なければ CPU が相手になるダミーを使う
     private static func makeBattleService() -> any BattleService {
-        DummyBattleService()
+        if SupabaseConfig.isConfigured, let url = URL(string: SupabaseConfig.url) {
+            SupabaseBattleService(url: url, anonKey: SupabaseConfig.anonKey)
+        } else {
+            DummyBattleService()
+        }
     }
 }
 
