@@ -103,9 +103,10 @@ final class BattleViewModel {
                 battle = BattleState(myMonster: match.myMonster, opponentMonster: match.opponentMonster)
                 lastEvent = nil
                 phase = .choosingAction
-            } catch is CancellationError {
-                // キャンセルは cancelSearch で処理する
             } catch {
+                // 自分でやめたとき（cancelSearch）はエラーにしない
+                // キャンセルされると、CancellationError 以外のエラーが投げられることもある
+                guard !Task.isCancelled else { return }
                 fail(error)
             }
         }
@@ -228,9 +229,9 @@ final class BattleViewModel {
 
                 try await Task.sleep(for: .seconds(Self.resultDisplayDuration))
                 phase = battle.outcome == nil ? .choosingAction : .finished
-            } catch is CancellationError {
-                // leaveBattle でキャンセルされた
             } catch {
+                // 自分でやめたとき（leaveBattle）はエラーにしない
+                guard !Task.isCancelled else { return }
                 fail(error)
             }
         }

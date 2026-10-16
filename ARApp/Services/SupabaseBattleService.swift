@@ -116,7 +116,13 @@ final class SupabaseBattleService: BattleService {
 
         while Date.now < deadline {
             if let move = opponentMoves[turn] { return move }
-            if isOpponentGone { throw ServiceError.opponentLeft }
+            if isOpponentGone {
+                // 相手は攻撃を送ってからやめたかもしれない（最後のターンなど）
+                // Realtime で取りこぼしていた場合に備えて、もう一度だけデータベースを見る
+                try? await fetchOpponentMoves(battleID: battleID)
+                if let move = opponentMoves[turn] { return move }
+                throw ServiceError.opponentLeft
+            }
 
             // Realtime で届かないままのときは、データベースを直接見る
             // 通信が一瞬切れても失敗にせず、次の確認を待つ（相手がいなくなったかはタイムアウトで判断する）
@@ -167,8 +173,9 @@ final class SupabaseBattleService: BattleService {
         let moveInserts = channel.postgresChange(
             InsertAction.self, table: "battle_moves", filter: .eq("battle_id", value: battleID)
         )
-        try await channel.subscribeWithError()
+        // 購読に失敗したりキャンセルされたりしても leave() で閉じられるよう、先に持っておく
         self.channel = channel
+        try await channel.subscribeWithError()
 
         listenTask = Task { [weak self] in
             await withTaskGroup(of: Void.self) { group in
