@@ -32,7 +32,5 @@ extension Location {
                  fingerprint: [-80, -66, -45, -72]),
         Location(id: "stairs", name: "階段", position: MapPosition(x: 0.8, y: 0.2),
                  fingerprint: [-76, -70, -61, -47]),
-        Location(id: "boss_zone", name: "ボスゾーン", position: MapPosition(x: 0.32, y: 0.2),
-                 fingerprint: [-66, -78, -74, -58]),
     ]
 }
