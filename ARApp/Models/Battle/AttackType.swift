@@ -4,7 +4,8 @@
 //
 
 /// ターンの初めに選ぶ攻撃の種類
-enum AttackType {
+/// rawValue は通信で相手に送るときの文字列
+enum AttackType: String {
     /// ふつうの攻撃
     case normal
     /// 判定エリアが狭いかわりにダメージが 2 倍

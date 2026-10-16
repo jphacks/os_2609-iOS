@@ -44,3 +44,10 @@ extension Monster {
         Monster(name: "トラ", modelName: "animal-tiger", size: 0.2),
     ]
 }
+
+extension Monster {
+    /// モデル名からモンスターを探す。対戦相手のモンスターはモデル名で送られてくる
+    static func named(_ modelName: String) -> Monster? {
+        all.first { $0.modelName == modelName }
+    }
+}

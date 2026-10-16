@@ -4,7 +4,8 @@
 //
 
 /// STOP を押したときの判定
-enum TimingJudgement {
+/// rawValue は通信で相手に送るときの文字列
+enum TimingJudgement: String {
     case perfect
     case good
     case miss
