@@ -51,6 +51,7 @@ SwiftUI の決まりとしての名前ではなく、役割がわかる名前を
 - **同じデータを複数の型に重複して持たせない。** 例：地点の ID・名前・マップ上の位置・フィンガープリントはすべて `Location` にまとめる。
 - **SwiftUI の View の名前は、画面も部品も `〜View` で終える**（例：`MapView`、`IndoorMapView`、`ARCaptureView`）。`ARViewContainer` は `UIViewRepresentable` の橋渡し役なので例外。
 - AR セッションのライフサイクル（`run` / `pause`）は `ARViewContainer` で管理する（`makeUIView` で run、`dismantleUIView` で pause）。
+  - **`TabView` の中で AR を使う画面は、表示中だけ `ARViewContainer` を置く**（`onAppear` / `onDisappear` で表示中かを持つ。例：`ARCaptureView`）。`TabView` は別のタブに切り替えても画面を残すので、そのままでは `dismantleUIView` が呼ばれず、カメラが動き続ける。
 
 ## プロジェクト設定
 
