@@ -11,9 +11,18 @@ struct MapScreen: View {
     @State private var viewModel: MapViewModel
     @State private var locationViewModel: LocationViewModel
 
-    init(scanner: any BeaconScanner = BLEBeaconScanner(), currentSpotID: String? = nil) {
+    init(scanner: any BeaconScanner = Self.defaultScanner(), currentSpotID: String? = nil) {
         _viewModel = State(initialValue: MapViewModel(currentSpotID: currentSpotID))
         _locationViewModel = State(initialValue: LocationViewModel(scanner: scanner))
+    }
+
+    /// シミュレータには Bluetooth がないので、ダミーのビーコンで「入口」にいることにする
+    private static func defaultScanner() -> any BeaconScanner {
+        #if targetEnvironment(simulator)
+        DummyBeaconScanner()
+        #else
+        BLEBeaconScanner()
+        #endif
     }
 
     var body: some View {
