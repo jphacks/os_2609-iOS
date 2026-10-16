@@ -20,24 +20,26 @@ final class ARSceneController {
     }
 
     func placeMonster(in arView: ARView) {
-        // 20cm 四方以上の水平面が見つかったら、そこに自動で固定されるアンカー
-        let anchor = AnchorEntity(.plane(.horizontal, classification: .any, minimumBounds: [0.2, 0.2]))
-        arView.scene.addAnchor(anchor)
-
-        // モデルの読み込みは時間がかかるので、終わってからアンカーに乗せる
+        // モデルの読み込みは時間がかかるので、読み込み終わってからアンカーごとシーンに置く
+        // 先にアンカーを置くと、モデルが出る前に「現れた！」と表示されてしまう
         let monster = viewModel.monster
         loadTask = Task {
             let entity = await MonsterEntity.make(from: monster)
             guard !Task.isCancelled else { return }
-            anchor.addChild(entity)
-        }
 
-        // 平面が見つかってアンカーが固定されたら ViewModel に知らせる
-        anchoredSubscription = arView.scene.subscribe(
-            to: SceneEvents.AnchoredStateChanged.self,
-            on: anchor
-        ) { [weak self] event in
-            self?.viewModel.monsterAnchorStateChanged(isAnchored: event.isAnchored)
+            // 20cm 四方以上の水平面が見つかったら、そこに自動で固定されるアンカー
+            let anchor = AnchorEntity(.plane(.horizontal, classification: .any, minimumBounds: [0.2, 0.2]))
+            anchor.addChild(entity)
+
+            // 平面が見つかってアンカーが固定されたら ViewModel に知らせる
+            // 固定のイベントを取りこぼさないよう、シーンに置く前に購読しておく
+            anchoredSubscription = arView.scene.subscribe(
+                to: SceneEvents.AnchoredStateChanged.self,
+                on: anchor
+            ) { [weak self] event in
+                self?.viewModel.monsterAnchorStateChanged(isAnchored: event.isAnchored)
+            }
+            arView.scene.addAnchor(anchor)
         }
     }
 
