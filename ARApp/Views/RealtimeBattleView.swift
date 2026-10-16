@@ -13,12 +13,6 @@ struct RealtimeBattleView: View {
 
     private var state: RealtimeBattleState { viewModel.state }
 
-    /// 自分の攻撃が当たった出来事。敵の揺れやダメージ表示のきっかけにする
-    private var playerAttackEvent: RealtimeBattleViewModel.Event? {
-        guard let event = viewModel.lastEvent, case .playerAttack = event.kind else { return nil }
-        return event
-    }
-
     var body: some View {
         VStack(spacing: 16) {
             // 1. 上部：敵の名前と HP
@@ -32,29 +26,29 @@ struct RealtimeBattleView: View {
             // 2. 中央上：敵モンスター
             FighterImage(systemName: "flame.fill", color: .orange, size: 120)
                 .overlay {
-                    if let event = playerAttackEvent, case .playerAttack(let damage) = event.kind {
-                        FloatingDamage(text: "-\(damage)", color: .red)
-                            .id(event.id)
+                    if let hit = viewModel.lastHitOnEnemy {
+                        FloatingDamage(text: "-\(hit.damage)", color: .red)
+                            .id(hit.id)
                     }
                 }
-                // 攻撃が当たるたびに左右に揺れる
-                .phaseAnimator([0, -12, 12, -6, 0], trigger: playerAttackEvent?.id) { content, x in
-                    content.offset(x: x)
-                } animation: { _ in
-                    .linear(duration: 0.05)
-                }
+                .shake(trigger: viewModel.lastHitOnEnemy?.id)
+                // 敵の攻撃のたびに自分の方へ踏み込む
+                .lunge(CGSize(width: -24, height: 36), trigger: viewModel.lastHitOnPlayer?.id)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             Spacer(minLength: 0)
 
             // 3. 中央下：自分のモンスター
             FighterImage(systemName: "shield.lefthalf.filled", color: .blue, size: 90)
-                // 攻撃するたびに敵の方へ踏み込む
-                .phaseAnimator([CGSize.zero, CGSize(width: 24, height: -36), .zero], trigger: playerAttackEvent?.id) { content, offset in
-                    content.offset(offset)
-                } animation: { _ in
-                    .easeOut(duration: 0.08)
+                .overlay {
+                    if let hit = viewModel.lastHitOnPlayer {
+                        FloatingDamage(text: "-\(hit.damage)", color: .purple)
+                            .id(hit.id)
+                    }
                 }
+                .shake(trigger: viewModel.lastHitOnPlayer?.id)
+                // 攻撃するたびに敵の方へ踏み込む
+                .lunge(CGSize(width: 24, height: -36), trigger: viewModel.lastHitOnEnemy?.id)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // 4. 下部：自分の HP と必殺技ゲージ
@@ -100,6 +94,38 @@ struct RealtimeBattleView: View {
                     .id(tapRipple.id)
                     .allowsHitTesting(false)
             }
+        }
+        .overlay {
+            if state.outcome == .lost {
+                Text("敗北…")
+                    .font(.largeTitle.bold())
+                    .padding(32)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+            }
+        }
+        // 画面が出ている間だけ敵が攻撃する。画面が消えると自動でキャンセルされる
+        .task {
+            await viewModel.runEnemyAttacks()
+        }
+    }
+}
+
+private extension View {
+    /// trigger が変わるたびに左右に揺れる（攻撃を受けた演出）
+    func shake(trigger: UUID?) -> some View {
+        phaseAnimator([0, -12, 12, -6, 0], trigger: trigger) { content, x in
+            content.offset(x: x)
+        } animation: { _ in
+            .linear(duration: 0.05)
+        }
+    }
+
+    /// trigger が変わるたびに offset の方向へ踏み込んで戻る（攻撃する演出）
+    func lunge(_ offset: CGSize, trigger: UUID?) -> some View {
+        phaseAnimator([CGSize.zero, offset, .zero], trigger: trigger) { content, value in
+            content.offset(value)
+        } animation: { _ in
+            .easeOut(duration: 0.08)
         }
     }
 }

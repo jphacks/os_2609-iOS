@@ -5,6 +5,12 @@
 
 import Foundation
 
+/// リアルタイムバトルの決着
+enum RealtimeBattleOutcome {
+    /// プレイヤーの HP が 0 になった
+    case lost
+}
+
 /// リアルタイムバトルの HP やゲージ。将来サーバーと同期するときは、この値をやり取りする想定
 /// （タイミングバトルの BattleState とは別物）
 struct RealtimeBattleState {
@@ -20,6 +26,8 @@ struct RealtimeBattleState {
     var specialGauge = 0
     /// この時刻になるまで次の通常攻撃はできない（クールダウン）
     var nextNormalAttackAt = Date.distantPast
+    /// 決着がついていなければ nil
+    var outcome: RealtimeBattleOutcome?
 
     /// ゲージが満タンなら必殺技を使える
     var canUseSpecial: Bool { specialGauge >= RealtimeBattleState.specialGaugeMax }
