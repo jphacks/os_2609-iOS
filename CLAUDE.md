@@ -16,6 +16,7 @@ SwiftUI + ARKit + RealityKit で作る iOS 向け AR モンスター捕獲アプ
 ARApp/
 ├── App/          エントリポイント（ARAppApp.swift）
 ├── Models/       データ定義のみ（例：Monster）。UI やフレームワークに依存しない
+├── Logic/        ゲームのルール（例：RealtimeBattleEngine）。状態を受け取って計算するだけで、UI・タイマー・通信は持たない
 ├── ViewModels/   画面の状態とロジック（@Observable）
 ├── Views/        SwiftUI の View
 │   └── AR/       ARView まわり（RealityKit / ARKit を扱うのはここだけ）
