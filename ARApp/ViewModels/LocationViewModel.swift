@@ -38,14 +38,12 @@ final class LocationViewModel {
     }
 
     private let scanner: any BeaconScanner
-    private let locations: [Location]
     /// ビーコンごとの、直近の受信記録
     private var samples: [String: [Sample]] = [:]
     private var updateTask: Task<Void, Never>?
 
-    init(scanner: any BeaconScanner, locations: [Location] = Location.registered) {
+    init(scanner: any BeaconScanner) {
         self.scanner = scanner
-        self.locations = locations
     }
 
     func start() {
@@ -100,7 +98,7 @@ final class LocationViewModel {
         currentRSSI = rssi
 
         // RSSI のパターンが一番似ている（距離が一番小さい）地点を現在地とする
-        currentLocation = locations.min {
+        currentLocation = Location.registered.min {
             Self.distance($0.fingerprint, rssi) < Self.distance($1.fingerprint, rssi)
         }
     }

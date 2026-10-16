@@ -6,8 +6,7 @@
 import Foundation
 
 /// AR 空間に出現するモンスターのデータ
-struct Monster: Identifiable {
-    let id = UUID()
+struct Monster {
     let name: String
     /// 見た目に使う 3D モデルのファイル名（拡張子 .usdz は付けない）
     let modelName: String
