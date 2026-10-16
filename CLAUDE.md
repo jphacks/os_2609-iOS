@@ -8,7 +8,7 @@ SwiftUI + ARKit + RealityKit で作る iOS 向け AR モンスター捕獲アプ
 - Step 単位で段階的に実装する。
 - ユーザーは ARKit / RealityKit を学習中。実装後は変更ファイルと役割、実機での確認手順を説明する。
 - 不要な抽象化や複雑な設計は避ける。状態やロジックが生まれた時点で必要な層を追加する。
-- ハッカソン用のため、ユニットテストや UI テストは書かない。動作はプレビューと実機で確認する。
+- ハッカソン用のため、ユニットテストや UI テストは書かない。画面に動作確認用のボタンなども置かない。動作はプレビューと実機で確認する。
 - コミットメッセージは日本語で書く。
 
 ## アーキテクチャ：MVVM + Service 層
@@ -46,6 +46,10 @@ SwiftUI の決まりとしての名前ではなく、役割がわかる名前を
 - **ViewModel の状態は `private(set)` にし、外からはメソッドを呼んで変更する。** 状態を変えるのは ViewModel 自身だけにする。
 - **Service は protocol で定義し、ViewModel に外から渡す。**
   - ESP32 がなくてもダミー実装で開発やテストができるようにするため。
+- **`ContentView` はタブを並べるだけ**にする。「AR に対応した端末か」など画面ごとの判定は、その画面の View の中で行う。
+- **画面をまたいで使う状態は `ContentView` で 1 つだけ作り、各画面に渡す。** 例：現在地の `LocationViewModel` はマップ画面と捕獲画面で共有する。画面ごとに作ると推定が別々に動き、現在地が食い違う。
+- **同じデータを複数の型に重複して持たせない。** 例：地点の ID・名前・マップ上の位置・フィンガープリントはすべて `Location` にまとめる。
+- **SwiftUI の View の名前は、画面も部品も `〜View` で終える**（例：`MapView`、`IndoorMapView`、`ARCaptureView`）。`ARViewContainer` は `UIViewRepresentable` の橋渡し役なので例外。
 - AR セッションのライフサイクル（`run` / `pause`）は `ARViewContainer` で管理する（`makeUIView` で run、`dismantleUIView` で pause）。
 
 ## プロジェクト設定
