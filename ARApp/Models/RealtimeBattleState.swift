@@ -7,6 +7,8 @@ import Foundation
 
 /// リアルタイムバトルの決着
 enum RealtimeBattleOutcome {
+    /// 敵の HP を 0 にした
+    case won
     /// プレイヤーの HP が 0 になった
     case lost
 }

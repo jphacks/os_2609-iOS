@@ -17,7 +17,9 @@ final class RealtimeBattleViewModel {
         var isSpecial = false
     }
 
-    private(set) var state = RealtimeBattleState(playerName: "ナイト", enemyName: "ドラゴン")
+    private(set) var state = RealtimeBattleViewModel.makeInitialState()
+    /// バトルごとに変わる ID。リトライで変わると、View の .task(id:) が敵の攻撃をやり直す
+    private(set) var battleID = UUID()
     /// 最後に敵へ当たった攻撃。View はこれが変わるたびに演出を流す
     private(set) var lastHitOnEnemy: Hit?
     /// 最後に自分へ当たった攻撃
@@ -33,6 +35,18 @@ final class RealtimeBattleViewModel {
     func useSpecial() {
         guard let damage = RealtimeBattleEngine.specialAttack(&state) else { return }
         lastHitOnEnemy = Hit(damage: damage, isSpecial: true)
+    }
+
+    /// 初期状態に戻して、もう一度バトルする
+    func retry() {
+        state = RealtimeBattleViewModel.makeInitialState()
+        lastHitOnEnemy = nil
+        lastHitOnPlayer = nil
+        battleID = UUID()
+    }
+
+    private static func makeInitialState() -> RealtimeBattleState {
+        RealtimeBattleState(playerName: "ナイト", enemyName: "ドラゴン")
     }
 
     /// 決着がつくまで、一定間隔で敵に攻撃させる

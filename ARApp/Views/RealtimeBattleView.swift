@@ -38,6 +38,9 @@ struct RealtimeBattleView: View {
                 .shake(trigger: viewModel.lastHitOnEnemy?.id)
                 // 敵の攻撃のたびに自分の方へ踏み込む
                 .lunge(CGSize(width: -24, height: 36), trigger: viewModel.lastHitOnPlayer?.id)
+                // 倒したら薄くなる
+                .opacity(state.outcome == .won ? 0.2 : 1)
+                .animation(.easeOut(duration: 0.5), value: state.outcome)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             Spacer(minLength: 0)
@@ -107,15 +110,18 @@ struct RealtimeBattleView: View {
             }
         }
         .overlay {
-            if state.outcome == .lost {
-                Text("敗北…")
-                    .font(.largeTitle.bold())
-                    .padding(32)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+            // 決着後は結果を全面に出す。下の画面へのタップも遮る
+            if let outcome = state.outcome {
+                ResultOverlay(outcome: outcome) {
+                    viewModel.retry()
+                }
+                .transition(.opacity)
             }
         }
-        // 画面が出ている間だけ敵が攻撃する。画面が消えると自動でキャンセルされる
-        .task {
+        .animation(.easeOut(duration: 0.3), value: state.outcome)
+        // 画面が出ている間だけ敵が攻撃する。画面が消えると自動でキャンセルされ、
+        // リトライで battleID が変わると、前の Task を止めてから新しく始める
+        .task(id: viewModel.battleID) {
             await viewModel.runEnemyAttacks()
         }
     }
@@ -137,6 +143,32 @@ private extension View {
             content.offset(value)
         } animation: { _ in
             .easeOut(duration: 0.08)
+        }
+    }
+}
+
+/// 勝敗とリトライボタン
+private struct ResultOverlay: View {
+    let outcome: RealtimeBattleOutcome
+    let onRetry: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                Image(systemName: outcome == .won ? "crown.fill" : "xmark.octagon.fill")
+                    .font(.system(size: 64))
+                    .foregroundStyle(outcome == .won ? .yellow : .red)
+                Text(outcome == .won ? "勝利！" : "敗北…")
+                    .font(.largeTitle.bold())
+                Button("リトライ", systemImage: "arrow.clockwise", action: onRetry)
+                    .font(.headline)
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(32)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
         }
     }
 }

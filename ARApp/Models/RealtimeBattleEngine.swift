@@ -22,8 +22,7 @@ enum RealtimeBattleEngine {
     static func normalAttack(_ state: inout RealtimeBattleState, at now: Date) -> Int? {
         guard state.outcome == nil, state.enemyHP > 0, now >= state.nextNormalAttackAt else { return nil }
 
-        let damage = min(normalAttackDamage, state.enemyHP)
-        state.enemyHP -= damage
+        let damage = damageEnemy(&state, by: normalAttackDamage)
         state.nextNormalAttackAt = now.addingTimeInterval(normalAttackCooldown)
         state.specialGauge = min(state.specialGauge + specialGaugeGain, RealtimeBattleState.specialGaugeMax)
         return damage
@@ -33,9 +32,18 @@ enum RealtimeBattleEngine {
     static func specialAttack(_ state: inout RealtimeBattleState) -> Int? {
         guard state.outcome == nil, state.enemyHP > 0, state.canUseSpecial else { return nil }
 
-        let damage = min(specialAttackDamage, state.enemyHP)
-        state.enemyHP -= damage
+        let damage = damageEnemy(&state, by: specialAttackDamage)
         state.specialGauge = 0
+        return damage
+    }
+
+    /// 敵の HP を減らし、0 になったら勝利にする。実際に与えたダメージを返す
+    private static func damageEnemy(_ state: inout RealtimeBattleState, by amount: Int) -> Int {
+        let damage = min(amount, state.enemyHP)
+        state.enemyHP -= damage
+        if state.enemyHP == 0 {
+            state.outcome = .won
+        }
         return damage
     }
 
