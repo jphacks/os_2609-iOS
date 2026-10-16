@@ -13,6 +13,8 @@ final class RealtimeBattleViewModel {
     struct Hit: Identifiable {
         let id = UUID()
         let damage: Int
+        /// 必殺技による攻撃か（演出を派手にする）
+        var isSpecial = false
     }
 
     private(set) var state = RealtimeBattleState(playerName: "ナイト", enemyName: "ドラゴン")
@@ -25,6 +27,12 @@ final class RealtimeBattleViewModel {
     func attack() {
         guard let damage = RealtimeBattleEngine.normalAttack(&state, at: .now) else { return }
         lastHitOnEnemy = Hit(damage: damage)
+    }
+
+    /// 必殺技ボタンが押されたときに呼ぶ。ゲージが満タンでなければ何も起きない
+    func useSpecial() {
+        guard let damage = RealtimeBattleEngine.specialAttack(&state) else { return }
+        lastHitOnEnemy = Hit(damage: damage, isSpecial: true)
     }
 
     /// 決着がつくまで、一定間隔で敵に攻撃させる

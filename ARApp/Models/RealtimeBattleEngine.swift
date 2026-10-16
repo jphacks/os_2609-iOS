@@ -11,6 +11,9 @@ enum RealtimeBattleEngine {
     static let normalAttackDamage = 10
     /// 通常攻撃のクールダウン（秒）
     static let normalAttackCooldown: TimeInterval = 0.3
+    /// 通常攻撃が当たるたびに溜まる必殺技ゲージ
+    static let specialGaugeGain = 10
+    static let specialAttackDamage = 50
     static let enemyAttackDamage = 10
     /// 敵が攻撃する間隔（秒）
     static let enemyAttackInterval: TimeInterval = 2
@@ -22,6 +25,17 @@ enum RealtimeBattleEngine {
         let damage = min(normalAttackDamage, state.enemyHP)
         state.enemyHP -= damage
         state.nextNormalAttackAt = now.addingTimeInterval(normalAttackCooldown)
+        state.specialGauge = min(state.specialGauge + specialGaugeGain, RealtimeBattleState.specialGaugeMax)
+        return damage
+    }
+
+    /// 必殺技。ゲージが満タンのときだけ使え、使うとゲージは 0 に戻る。使えなければ nil を返す
+    static func specialAttack(_ state: inout RealtimeBattleState) -> Int? {
+        guard state.outcome == nil, state.enemyHP > 0, state.canUseSpecial else { return nil }
+
+        let damage = min(specialAttackDamage, state.enemyHP)
+        state.enemyHP -= damage
+        state.specialGauge = 0
         return damage
     }
 

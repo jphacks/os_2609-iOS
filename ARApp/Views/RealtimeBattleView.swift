@@ -27,8 +27,12 @@ struct RealtimeBattleView: View {
             FighterImage(systemName: "flame.fill", color: .orange, size: 120)
                 .overlay {
                     if let hit = viewModel.lastHitOnEnemy {
-                        FloatingDamage(text: "-\(hit.damage)", color: .red)
-                            .id(hit.id)
+                        FloatingDamage(
+                            text: "-\(hit.damage)",
+                            color: hit.isSpecial ? .yellow : .red,
+                            fontSize: hit.isSpecial ? 64 : 36
+                        )
+                        .id(hit.id)
                     }
                 }
                 .shake(trigger: viewModel.lastHitOnEnemy?.id)
@@ -42,7 +46,7 @@ struct RealtimeBattleView: View {
             FighterImage(systemName: "shield.lefthalf.filled", color: .blue, size: 90)
                 .overlay {
                     if let hit = viewModel.lastHitOnPlayer {
-                        FloatingDamage(text: "-\(hit.damage)", color: .purple)
+                        FloatingDamage(text: "-\(hit.damage)", color: .purple, fontSize: 36)
                             .id(hit.id)
                     }
                 }
@@ -63,15 +67,15 @@ struct RealtimeBattleView: View {
                     title: "必殺技ゲージ",
                     value: state.specialGauge,
                     maxValue: RealtimeBattleState.specialGaugeMax,
-                    color: .yellow
+                    color: state.canUseSpecial ? .orange : .yellow
                 )
             }
 
             // 5. 最下部：必殺技ボタン
             Button {
-                // 必殺技は Step 4 で実装する
+                viewModel.useSpecial()
             } label: {
-                Label("必殺技", systemImage: "bolt.fill")
+                Label(state.canUseSpecial ? "必殺技 READY!" : "必殺技", systemImage: "bolt.fill")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -93,6 +97,13 @@ struct RealtimeBattleView: View {
                     .position(tapRipple.location)
                     .id(tapRipple.id)
                     .allowsHitTesting(false)
+            }
+        }
+        .overlay {
+            // 必殺技が当たった瞬間、画面全体を光らせる
+            if let hit = viewModel.lastHitOnEnemy, hit.isSpecial {
+                FlashView()
+                    .id(hit.id)
             }
         }
         .overlay {
@@ -155,11 +166,12 @@ private struct RippleView: View {
 private struct FloatingDamage: View {
     let text: String
     let color: Color
+    let fontSize: CGFloat
     @State private var isFloating = false
 
     var body: some View {
         Text(text)
-            .font(.system(size: 36, weight: .heavy, design: .rounded))
+            .font(.system(size: fontSize, weight: .heavy, design: .rounded))
             .foregroundStyle(color)
             .shadow(radius: 2)
             .offset(y: isFloating ? -80 : -20)
@@ -167,6 +179,21 @@ private struct FloatingDamage: View {
             .allowsHitTesting(false)
             .onAppear {
                 withAnimation(.easeOut(duration: 0.6)) { isFloating = true }
+            }
+    }
+}
+
+/// 画面全体が一瞬光って消える（必殺技の演出）
+private struct FlashView: View {
+    @State private var isFading = false
+
+    var body: some View {
+        Color.yellow
+            .opacity(isFading ? 0 : 0.6)
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.5)) { isFading = true }
             }
     }
 }
