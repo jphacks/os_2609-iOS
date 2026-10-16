@@ -5,13 +5,12 @@
 
 import SwiftUI
 
-/// 屋内マップ本体。背景・地点・モンスター・レイド地点・プレイヤーを重ねて描く
+/// 屋内マップ本体。背景・地点・レイド地点・プレイヤーを重ねて描く
 /// 位置は `MapPosition`（0〜1 の割合）を、実際の表示サイズに掛けて求める
 struct IndoorMapView: View {
     let locations: [Location]
     /// つながっている地点の ID の組。通路として描く
     var corridors: [(from: String, to: String)] = []
-    var monsterSpots: [MonsterSpot] = []
     var raidSpots: [RaidSpot] = []
     let currentLocation: Location?
 
@@ -29,11 +28,6 @@ struct IndoorMapView: View {
                 ForEach(raidSpots) { raid in
                     RaidMarkerView(raid: raid)
                         .position(point(for: raid.position, in: size))
-                }
-
-                ForEach(monsterSpots) { monster in
-                    MonsterMarkerView(monster: monster)
-                        .position(point(for: monster.position, in: size))
                 }
 
                 // プレイヤーは一番手前に描く
@@ -132,23 +126,6 @@ private struct LocationMarkerView: View {
     }
 }
 
-/// モンスターのアイコン。その場でふわふわ上下に揺れる
-private struct MonsterMarkerView: View {
-    let monster: MonsterSpot
-    @State private var isFloating = false
-
-    var body: some View {
-        Image(systemName: "pawprint.circle.fill")
-            .font(.system(size: 28))
-            .foregroundStyle(.white, .orange)
-            .shadow(radius: 2)
-            .offset(y: isFloating ? -4 : 0)
-            .animation(.easeInOut(duration: 1).repeatForever(), value: isFloating)
-            .onAppear { isFloating = true }
-            .accessibilityLabel(monster.name)
-    }
-}
-
 /// レイド地点のアイコン。台座の上にボスの印を置く
 private struct RaidMarkerView: View {
     let raid: RaidSpot
@@ -198,7 +175,6 @@ private struct PlayerMarkerView: View {
     IndoorMapView(
         locations: Location.registered,
         corridors: Location.corridors,
-        monsterSpots: MonsterSpot.samples,
         raidSpots: RaidSpot.samples,
         currentLocation: Location.registered[0]
     )

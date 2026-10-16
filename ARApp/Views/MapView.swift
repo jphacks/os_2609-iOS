@@ -17,7 +17,6 @@ struct MapView: View {
             IndoorMapView(
                 locations: Location.registered,
                 corridors: Location.corridors,
-                monsterSpots: MonsterSpot.samples,
                 raidSpots: RaidSpot.samples,
                 currentLocation: locationViewModel.currentLocation
             )
