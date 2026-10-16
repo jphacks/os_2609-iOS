@@ -5,32 +5,61 @@
 
 import SwiftUI
 
-/// タイミングバトル画面。攻撃方法を選び、流れるカーソルを判定エリアで止めていく
+/// 対戦画面。同じ地点にいる相手とマッチングし、毎ターン同時にタイミング攻撃をし合う
 /// 部品は同じフォルダの別ファイルにある（MonsterCardView、TimingGaugeView など）
 struct BattleView: View {
-    @State private var viewModel = BattleViewModel()
+    let locationViewModel: LocationViewModel
+    @State private var viewModel: BattleViewModel
     /// 揺れの演出のきっかけ。増えるたびに 1 回揺れる
-    @State private var monsterShakeCount = 0
+    @State private var opponentShakeCount = 0
     @State private var playerShakeCount = 0
 
-    private var battle: BattleState { viewModel.battle }
+    init(locationViewModel: LocationViewModel, service: any BattleService) {
+        self.locationViewModel = locationViewModel
+        _viewModel = State(initialValue: BattleViewModel(service: service))
+    }
 
     var body: some View {
+        Group {
+            if let battle = viewModel.battle {
+                battleScreen(battle)
+            } else {
+                BattleLobbyView(
+                    myMonster: viewModel.myMonster,
+                    location: locationViewModel.currentLocation,
+                    isSearching: viewModel.phase == .searching,
+                    errorMessage: viewModel.errorMessage,
+                    onFind: { viewModel.findOpponent(locationID: $0.id) },
+                    onCancel: { viewModel.cancelSearch() }
+                )
+            }
+        }
+        .padding()
+        .sensoryFeedback(trigger: viewModel.lastEvent?.id) { _, _ in
+            viewModel.lastEvent?.kind.feedback
+        }
+        .onChange(of: viewModel.lastEvent?.id) {
+            guard case .turnResolved(let dealt, let taken) = viewModel.lastEvent?.kind else { return }
+            if dealt > 0 { opponentShakeCount += 1 }
+            if taken > 0 { playerShakeCount += 1 }
+        }
+    }
+
+    private func battleScreen(_ battle: BattleState) -> some View {
         VStack(spacing: 16) {
             HStack {
-                Text("MONSTER BATTLE")
+                Text("VS \(battle.opponent.monster.name)")
                     .font(.headline)
                 Spacer()
-                Text("TURN \(battle.turn) / \(battle.profile.turnLimit)")
+                Text("TURN \(battle.turn) / \(BattleState.turnLimit)")
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
             MonsterCardView(
-                name: viewModel.monster.name,
-                trait: battle.profile.trait,
-                isEnraged: battle.isEnraged,
-                isDefeated: battle.outcome == .defeated
+                name: battle.opponent.monster.name,
+                trait: battle.opponent.profile.trait,
+                isDefeated: battle.opponent.hp == 0
             )
             .overlay {
                 if let event = viewModel.lastEvent,
@@ -39,15 +68,25 @@ struct BattleView: View {
                         .id(event.id)
                 }
             }
-            .shake(trigger: monsterShakeCount)
+            .shake(trigger: opponentShakeCount)
 
-            HPBarView(title: "BOSS HP", hp: battle.monsterHP, maxHP: battle.profile.maxHP, color: .red)
-            HPBarView(title: "YOUR HP", hp: battle.playerHP, maxHP: BattleState.playerMaxHP, color: .green)
-                .shake(trigger: playerShakeCount)
+            HPBarView(
+                title: "相手（\(battle.opponent.monster.name)）",
+                hp: battle.opponent.hp,
+                maxHP: battle.opponent.profile.maxHP,
+                color: .red
+            )
+            HPBarView(
+                title: "自分（\(battle.me.monster.name)）",
+                hp: battle.me.hp,
+                maxHP: battle.me.profile.maxHP,
+                color: .green
+            )
+            .shake(trigger: playerShakeCount)
 
-            if viewModel.isFinished, let outcome = battle.outcome {
-                BattleResultView(outcome: outcome, monsterName: viewModel.monster.name) {
-                    viewModel.restartBattle()
+            if viewModel.phase == .finished, let outcome = battle.outcome {
+                BattleResultView(outcome: outcome, opponentName: battle.opponent.monster.name) {
+                    viewModel.leaveBattle()
                 }
             } else {
                 // 止まっている間は再描画しない。位置は描画する時刻から毎回計算する
@@ -60,24 +99,13 @@ struct BattleView: View {
                 }
                 .frame(height: 70)
 
-                BattleMessageView(event: viewModel.lastEvent, monsterName: viewModel.monster.name)
+                BattleMessageView(
+                    event: viewModel.lastEvent,
+                    isWaitingForOpponent: viewModel.phase == .waitingForOpponent
+                )
 
                 controls
                     .frame(height: 64)
-            }
-        }
-        .padding()
-        .sensoryFeedback(trigger: viewModel.lastEvent?.id) { _, _ in
-            viewModel.lastEvent?.kind.feedback
-        }
-        .onChange(of: viewModel.lastEvent?.id) {
-            switch viewModel.lastEvent?.kind {
-            case .hit(_, let damage, _) where damage > 0:
-                monsterShakeCount += 1
-            case .counterattack(let damage) where damage > 0:
-                playerShakeCount += 1
-            default:
-                break
             }
         }
     }
@@ -93,11 +121,8 @@ struct BattleView: View {
                 ActionButtonView(title: "強攻撃", detail: "ダメージ×2・狭い", tint: .orange) {
                     viewModel.startAttack(.strong)
                 }
-                ActionButtonView(title: "捕獲", detail: "成功率 \(Int(battle.captureChance * 100))%", tint: .purple) {
-                    viewModel.capture()
-                }
             }
-        case .attacking, .resolving:
+        default:
             Button {
                 viewModel.stop()
             } label: {
@@ -139,5 +164,8 @@ private struct ActionButtonView: View {
 }
 
 #Preview {
-    BattleView()
+    // ダミーの相手。「対戦相手を探す」を押すと CPU とすぐに対戦が始まる
+    let locationViewModel = LocationViewModel(scanner: DummyBeaconScanner())
+    BattleView(locationViewModel: locationViewModel, service: DummyBattleService())
+        .onAppear { locationViewModel.start() }
 }

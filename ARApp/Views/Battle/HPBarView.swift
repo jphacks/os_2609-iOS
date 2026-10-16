@@ -36,6 +36,6 @@ struct HPBarView: View {
 }
 
 #Preview {
-    HPBarView(title: "YOUR HP", hp: 60, maxHP: 100, color: .green)
+    HPBarView(title: "自分（ネコ）", hp: 420, maxHP: 600, color: .green)
         .padding()
 }

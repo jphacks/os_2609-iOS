@@ -6,25 +6,33 @@
 import Foundation
 import Observation
 
-/// タイミングバトル画面の状態と、ターンの進行
+/// 対戦画面の状態と、ターンの進行
+/// 毎ターン 2 人が同時に攻撃し、相手の攻撃が届いたらまとめてダメージを反映する
 /// カーソルの位置は保存せず、開始時刻からの経過時間で毎回計算する
 @Observable
 final class BattleViewModel {
     enum Phase {
+        /// 対戦相手を探す前
+        case lobby
+        /// 対戦相手を探している
+        case searching
         /// 攻撃方法を選んでいる
         case choosingAction
         /// カーソルが動いている
         case attacking
-        /// 結果と反撃を見せている
+        /// 自分の攻撃を送り、相手の攻撃を待っている
+        case waitingForOpponent
+        /// ターンの結果を見せている
         case resolving
+        /// 決着がついて、結果画面を出している
+        case finished
     }
 
     /// 画面の演出（ダメージ表示、揺れ、振動）のきっかけになる出来事
     struct Event: Identifiable {
         enum Kind {
             case hit(TimingJudgement, damage: Int, combo: Int)
-            case counterattack(damage: Int)
-            case capture(succeeded: Bool)
+            case turnResolved(dealt: Int, taken: Int)
         }
 
         let id = UUID()
@@ -33,24 +41,28 @@ final class BattleViewModel {
 
     /// 攻撃を選んでからカーソルが動き出すまでの時間（秒）
     static let leadTime: TimeInterval = 0.5
-    /// 結果や反撃を見せる時間（秒）
-    static let resultDisplayDuration: TimeInterval = 0.9
+    /// ターンの結果を見せる時間（秒）
+    static let resultDisplayDuration: TimeInterval = 1.2
 
-    private(set) var monster: Monster
-    private(set) var battle: BattleState
-    private(set) var phase = Phase.choosingAction
-    /// 決着がついて、結果画面を出すタイミングになったら true
-    private(set) var isFinished = false
+    /// 次の対戦で使う自分のモンスター（今はランダム。あとで一覧から選べるようにする）
+    private(set) var myMonster = Monster.all.randomElement()!
+    /// 対戦中の状態。マッチングするまでは nil
+    private(set) var battle: BattleState?
+    private(set) var phase = Phase.lobby
+    /// 通信に失敗したときに出すメッセージ
+    private(set) var errorMessage: String?
 
     private(set) var attackType = AttackType.normal
     /// 今のターンのゲージ。最初の攻撃までは判定エリアなし
     private(set) var gauge = TimingGauge(traverseDuration: 1, zones: [])
     /// 今のターンのエリアごとの判定。まだ当てていないエリアは nil
     private(set) var zoneResults: [TimingJudgement?] = []
-    /// 今のターンに STOP を押した回数。エリアの数まで押せる
-    private(set) var tapCount = 0
+    /// 今のターンに STOP を押した順の判定
+    private var tapJudgements: [TimingJudgement] = []
+    /// 今のターンの連続 PERFECT の回数。ダメージの表示に使う
+    private var turnCombo = 0
 
-    var remainingTaps: Int { gauge.zones.count - tapCount }
+    var remainingTaps: Int { gauge.zones.count - tapJudgements.count }
     private(set) var lastEvent: Event?
 
     /// カーソルが左端を出発する時刻
@@ -61,14 +73,13 @@ final class BattleViewModel {
     /// 最初は遠い過去にしておき、カーソルが左端に止まって見えるようにする
     private(set) var stoppedAt: Date? = .distantPast
 
+    private let service: any BattleService
+    private var searchTask: Task<Void, Never>?
     private var deadlineTask: Task<Void, Never>?
-    private var resolveTask: Task<Void, Never>?
+    private var turnTask: Task<Void, Never>?
 
-    init() {
-        // `Monster.all` は空ではない
-        let monster = Monster.all.randomElement()!
-        self.monster = monster
-        battle = BattleState(profile: .of(monster))
+    init(service: any BattleService) {
+        self.service = service
     }
 
     /// 指定した時刻でのカーソル位置（0〜1）
@@ -80,14 +91,43 @@ final class BattleViewModel {
         return gauge.cursorPosition(elapsed: time.timeIntervalSince(startedAt))
     }
 
+    /// 同じ地点にいる対戦相手を探す
+    func findOpponent(locationID: String) {
+        guard phase == .lobby else { return }
+        phase = .searching
+        errorMessage = nil
+        searchTask = Task {
+            do {
+                let match = try await service.findOpponent(locationID: locationID, monster: myMonster)
+                guard !Task.isCancelled else { return }
+                battle = BattleState(myMonster: match.myMonster, opponentMonster: match.opponentMonster)
+                lastEvent = nil
+                phase = .choosingAction
+            } catch is CancellationError {
+                // キャンセルは cancelSearch で処理する
+            } catch {
+                fail(error)
+            }
+        }
+    }
+
+    /// 対戦相手を探すのをやめる
+    func cancelSearch() {
+        guard phase == .searching else { return }
+        searchTask?.cancel()
+        phase = .lobby
+        Task { await service.leave() }
+    }
+
     /// 攻撃方法を選んでターンを始める
     func startAttack(_ type: AttackType) {
-        guard phase == .choosingAction, battle.outcome == nil else { return }
+        guard phase == .choosingAction, let battle else { return }
         attackType = type
         var generator = SystemRandomNumberGenerator()
-        gauge = .random(profile: battle.profile, attackType: type, isEnraged: battle.isEnraged, using: &generator)
+        gauge = .random(profile: battle.me.profile, attackType: type, using: &generator)
         zoneResults = Array(repeating: nil, count: gauge.zones.count)
-        tapCount = 0
+        tapJudgements = []
+        turnCombo = battle.me.combo
         startedAt = Date.now.addingTimeInterval(Self.leadTime)
         hitStopUntil = .distantPast
         stoppedAt = nil
@@ -100,7 +140,6 @@ final class BattleViewModel {
     func stop(at date: Date = .now) {
         // ヒットストップ中の連打は受け付けない
         guard phase == .attacking, remainingTaps > 0, date >= hitStopUntil else { return }
-        tapCount += 1
 
         let judgement: TimingJudgement
         if let result = gauge.judge(elapsed: date.timeIntervalSince(startedAt)),
@@ -113,36 +152,32 @@ final class BattleViewModel {
         record(judgement, at: date)
     }
 
-    /// 攻撃のかわりに捕獲を試みる。失敗すると全力で反撃される
-    func capture() {
-        guard phase == .choosingAction, battle.outcome == nil else { return }
-        let succeeded = battle.tryCapture(roll: Double.random(in: 0..<1))
-        lastEvent = Event(kind: .capture(succeeded: succeeded))
-        finishTurn(counterDamage: battle.profile.attackPower)
-    }
-
-    /// 新しいモンスターと最初から戦う
-    func restartBattle() {
+    /// 対戦をやめてロビーに戻る。次の対戦では別のモンスターを使う
+    func leaveBattle() {
+        searchTask?.cancel()
         deadlineTask?.cancel()
-        resolveTask?.cancel()
-        monster = Monster.all.randomElement()!
-        battle = BattleState(profile: .of(monster))
-        phase = .choosingAction
-        isFinished = false
+        turnTask?.cancel()
+        Task { await service.leave() }
+        battle = nil
+        myMonster = Monster.all.randomElement()!
+        phase = .lobby
         gauge = TimingGauge(traverseDuration: 1, zones: [])
         zoneResults = []
-        tapCount = 0
+        tapJudgements = []
         lastEvent = nil
         hitStopUntil = .distantPast
         stoppedAt = .distantPast
     }
 
     private func record(_ judgement: TimingJudgement, at date: Date) {
-        let damage = battle.hit(judgement, attackType: attackType)
-        lastEvent = Event(kind: .hit(judgement, damage: damage, combo: battle.combo))
+        tapJudgements.append(judgement)
+        // ダメージが実際に入るのは相手の攻撃がそろってから。ここでは表示だけ
+        turnCombo = judgement == .perfect ? turnCombo + 1 : 0
+        let damage = BattleFighter.damage(for: judgement, attackType: attackType, combo: turnCombo)
+        lastEvent = Event(kind: .hit(judgement, damage: damage, combo: turnCombo))
 
-        // MISS でもカーソルは流れ続ける。タップを使い切るか倒したらターン終了
-        if battle.outcome != nil || remainingTaps == 0 {
+        // MISS でもカーソルは流れ続ける。タップを使い切ったらターン終了
+        if remainingTaps == 0 {
             endAttack(at: date)
             return
         }
@@ -166,34 +201,46 @@ final class BattleViewModel {
         }
     }
 
-    /// カーソルを止めて反撃に進む。当てられなかったエリアは MISS 扱い
+    /// カーソルを止めて、自分の攻撃を送る。押さずに残ったタップのぶんは MISS として足す
     private func endAttack(at date: Date) {
+        deadlineTask?.cancel()
         stoppedAt = date
-        let judgements = zoneResults.map { $0 ?? .miss }
-        finishTurn(counterDamage: battle.counterDamage(for: judgements))
+        let move = BattleMove(
+            attackType: attackType,
+            judgements: tapJudgements + Array(repeating: .miss, count: remainingTaps)
+        )
+        phase = .waitingForOpponent
+        exchange(move)
     }
 
-    /// ターンを終える。決着がついていなければ、少し待ってからモンスターが反撃する
-    private func finishTurn(counterDamage: Int) {
-        deadlineTask?.cancel()
-        phase = .resolving
-        resolveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.resultDisplayDuration))
-            guard let self, !Task.isCancelled else { return }
+    /// 自分の攻撃を送り、相手の攻撃が届いたら 2 人ぶんのダメージを反映する
+    private func exchange(_ move: BattleMove) {
+        guard let turn = battle?.turn else { return }
+        turnTask = Task {
+            do {
+                try await service.send(move, turn: turn)
+                let opponentMove = try await service.opponentMove(turn: turn)
+                guard !Task.isCancelled, var battle else { return }
+                let result = battle.resolveTurn(myMove: move, opponentMove: opponentMove)
+                self.battle = battle
+                lastEvent = Event(kind: .turnResolved(dealt: result.dealt, taken: result.taken))
+                phase = .resolving
 
-            if self.battle.outcome == nil {
-                self.battle.receiveCounterattack(damage: counterDamage)
-                self.lastEvent = Event(kind: .counterattack(damage: counterDamage))
-                try? await Task.sleep(for: .seconds(Self.resultDisplayDuration))
-                guard !Task.isCancelled else { return }
-            }
-
-            if self.battle.outcome == nil {
-                self.phase = .choosingAction
-            } else {
-                self.isFinished = true
+                try await Task.sleep(for: .seconds(Self.resultDisplayDuration))
+                phase = battle.outcome == nil ? .choosingAction : .finished
+            } catch is CancellationError {
+                // leaveBattle でキャンセルされた
+            } catch {
+                fail(error)
             }
         }
+    }
+
+    /// 通信に失敗したら対戦をやめてロビーに戻る
+    private func fail(_ error: Error) {
+        print("対戦の通信に失敗しました: \(error)")
+        leaveBattle()
+        errorMessage = "通信に失敗しました。もう一度お試しください"
     }
 
     private static func hitStopDuration(for judgement: TimingJudgement) -> TimeInterval {

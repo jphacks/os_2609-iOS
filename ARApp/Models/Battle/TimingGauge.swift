@@ -29,7 +29,7 @@ struct TimingZone {
 }
 
 /// 1 ターンぶんのゲージ。カーソルの位置と判定を経過時間だけから計算する
-/// UI にも現在時刻にも依存しないので、将来バトル状態を同期するときも同じ計算を使える
+/// UI にも現在時刻にも依存しないので、計算だけを確かめやすい
 struct TimingGauge {
     /// カーソルが左端から右端まで進むのにかかる時間（秒）
     let traverseDuration: TimeInterval
@@ -56,16 +56,14 @@ extension TimingGauge {
     private static let zoneArea = 0.12...0.98
 
     /// 1 ターンぶんのゲージを作る。判定エリアは毎ターンランダムな位置に置く
-    /// モンスターが怒っているとカーソルが速く、エリアが狭くなる
-    /// 乱数を外から渡せるので、将来は同じ seed を共有すれば全員が同じゲージを作れる
+    /// ゲージは自分の端末でだけ使い、相手には判定の結果だけを送る
     static func random(
         profile: BattleProfile,
         attackType: AttackType,
-        isEnraged: Bool,
         using generator: inout some RandomNumberGenerator
     ) -> TimingGauge {
-        let duration = profile.traverseDuration * (isEnraged ? 0.75 : 1)
-        let width = profile.zoneWidth * attackType.zoneWidthMultiplier * (isEnraged ? 0.8 : 1)
+        let duration = profile.traverseDuration
+        let width = profile.zoneWidth * attackType.zoneWidthMultiplier
 
         // 範囲をエリアの数で等分し、各区間の中に 1 つずつ置く（重ならない）
         let segmentWidth = (zoneArea.upperBound - zoneArea.lowerBound) / Double(profile.zoneCount)

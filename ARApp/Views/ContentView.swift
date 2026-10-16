@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
     @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
+    @State private var battleService = Self.makeBattleService()
 
     var body: some View {
         TabView {
@@ -20,7 +21,7 @@ struct ContentView: View {
                 ARCaptureView(locationViewModel: locationViewModel)
             }
             Tab("バトル", systemImage: "bolt.fill") {
-                BattleView()
+                BattleView(locationViewModel: locationViewModel, service: battleService)
             }
         }
         .onAppear { locationViewModel.start() }
@@ -34,6 +35,11 @@ struct ContentView: View {
         #else
         BLEBeaconScanner()
         #endif
+    }
+
+    /// 今は Supabase につないでいないので、CPU が相手になるダミーを使う
+    private static func makeBattleService() -> any BattleService {
+        DummyBattleService()
     }
 }
 

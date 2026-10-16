@@ -5,10 +5,10 @@
 
 import SwiftUI
 
-/// バトルの結果
+/// 対戦の結果
 struct BattleResultView: View {
     let outcome: BattleOutcome
-    let monsterName: String
+    let opponentName: String
     let onRestart: () -> Void
 
     var body: some View {
@@ -19,7 +19,7 @@ struct BattleResultView: View {
             Text(title)
                 .font(.largeTitle.bold())
             Text(message)
-            Button("次のモンスターとたたかう", action: onRestart)
+            Button("ロビーに戻る", action: onRestart)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
         }
@@ -28,32 +28,29 @@ struct BattleResultView: View {
 
     private var symbol: (name: String, color: Color) {
         switch outcome {
-        case .defeated: ("trophy.fill", .yellow)
-        case .captured: ("sparkles", .purple)
+        case .won: ("trophy.fill", .yellow)
         case .lost: ("xmark.octagon.fill", .gray)
-        case .escaped: ("figure.run", .gray)
+        case .draw: ("equal.circle.fill", .blue)
         }
     }
 
     private var title: String {
         switch outcome {
-        case .defeated: "VICTORY!"
-        case .captured: "GET!"
+        case .won: "VICTORY!"
         case .lost: "DEFEAT..."
-        case .escaped: "ESCAPED..."
+        case .draw: "DRAW"
         }
     }
 
     private var message: String {
         switch outcome {
-        case .defeated: "\(monsterName)をたおした！"
-        case .captured: "\(monsterName)を捕まえた！"
-        case .lost: "\(monsterName)にやられてしまった…"
-        case .escaped: "\(monsterName)は逃げてしまった…"
+        case .won: "\(opponentName)に勝った！"
+        case .lost: "\(opponentName)に負けてしまった…"
+        case .draw: "\(opponentName)と引き分け"
         }
     }
 }
 
 #Preview {
-    BattleResultView(outcome: .captured, monsterName: "ライオン") {}
+    BattleResultView(outcome: .won, opponentName: "ライオン") {}
 }

@@ -9,7 +9,6 @@ import SwiftUI
 struct MonsterCardView: View {
     let name: String
     let trait: String
-    let isEnraged: Bool
     let isDefeated: Bool
 
     var body: some View {
@@ -20,26 +19,10 @@ struct MonsterCardView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 120)
                 .background(
-                    LinearGradient(
-                        colors: isEnraged ? [.red, .orange] : [.purple, .blue],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
+                    LinearGradient(colors: [.purple, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
                     in: .rect(cornerRadius: 12)
                 )
-                .overlay(alignment: .topTrailing) {
-                    if isEnraged {
-                        Label("怒り", systemImage: "flame.fill")
-                            .font(.caption.bold())
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.black.opacity(0.4), in: .capsule)
-                            .foregroundStyle(.white)
-                            .padding(8)
-                    }
-                }
                 .opacity(isDefeated ? 0.3 : 1)
-                .animation(.easeInOut, value: isEnraged)
 
             HStack(spacing: 8) {
                 Text(name)
@@ -76,7 +59,7 @@ struct FloatingDamageView: View {
 }
 
 #Preview {
-    MonsterCardView(name: "ライオン", trait: "連撃が多い", isEnraged: false, isDefeated: false)
+    MonsterCardView(name: "ライオン", trait: "連撃が多いが打たれ弱い", isDefeated: false)
         .overlay { FloatingDamageView(text: "-100", color: .orange) }
         .padding()
 }

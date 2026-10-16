@@ -3,89 +3,94 @@
 //  ARApp
 //
 
-/// バトルの決着
+/// 対戦の決着（自分から見た結果）
 enum BattleOutcome {
-    /// HP を 0 にして倒した
-    case defeated
-    /// 捕獲に成功した
-    case captured
-    /// プレイヤーの HP が 0 になった
+    case won
     case lost
-    /// ターン制限までに決着せず逃げられた
-    case escaped
+    case draw
 }
 
-/// バトルの進み具合。将来サーバーと同期するときは、この値をやり取りする想定
-/// 乱数は使わず、捕獲の成否も外から渡された値で決める（同じ入力なら必ず同じ結果になる）
-struct BattleState {
-    static let playerMaxHP = 100
-
+/// 対戦に参加しているプレイヤー 1 人ぶんの状態
+struct BattleFighter {
+    let monster: Monster
     let profile: BattleProfile
-    private(set) var monsterHP: Int
-    private(set) var playerHP = BattleState.playerMaxHP
-    /// 今のターン（1 から）
-    private(set) var turn = 1
-    /// PERFECT が続いている回数。GOOD か MISS で 0 に戻る
+    private(set) var hp: Int
+    /// PERFECT が続いている回数。GOOD か MISS で 0 に戻る。ターンをまたいで続く
     private(set) var combo = 0
-    /// 決着がついていなければ nil
-    private(set) var outcome: BattleOutcome?
 
-    init(profile: BattleProfile) {
-        self.profile = profile
-        monsterHP = profile.maxHP
+    init(monster: Monster) {
+        self.monster = monster
+        profile = .of(monster)
+        hp = profile.maxHP
     }
 
-    /// HP が半分以下になると怒って、カーソルが速く、判定エリアが狭くなる
-    var isEnraged: Bool { monsterHP * 2 <= profile.maxHP }
+    /// 残り HP の割合（0〜1）。ターン制限で決着するときに比べる
+    var hpRatio: Double { Double(hp) / Double(profile.maxHP) }
+
+    /// 判定 1 回ぶんのダメージ。combo はこの判定を含めた連続 PERFECT の回数
+    static func damage(for judgement: TimingJudgement, attackType: AttackType, combo: Int) -> Int {
+        Int((Double(judgement.baseDamage) * attackType.damageMultiplier * comboMultiplier(combo)).rounded())
+    }
 
     /// 連続 PERFECT によるダメージ倍率。2 回目から 0.25 ずつ上がり、最大 2 倍
-    var comboMultiplier: Double {
+    static func comboMultiplier(_ combo: Int) -> Double {
         min(1 + 0.25 * Double(max(combo - 1, 0)), 2)
     }
 
-    /// 捕獲の成功率。HP が減るほど上がる（満タンで 10%、残りわずかで 95% 近く）
-    var captureChance: Double {
-        0.1 + 0.85 * (1 - Double(monsterHP) / Double(profile.maxHP))
-    }
-
-    /// 判定 1 回ぶんのダメージを与える。与えたダメージを返す
-    mutating func hit(_ judgement: TimingJudgement, attackType: AttackType) -> Int {
-        guard outcome == nil else { return 0 }
-        combo = judgement == .perfect ? combo + 1 : 0
-        let damage = Int((Double(judgement.baseDamage) * attackType.damageMultiplier * comboMultiplier).rounded())
-        monsterHP = max(monsterHP - damage, 0)
-        if monsterHP == 0 {
-            outcome = .defeated
+    /// 1 ターンぶんの攻撃をして、コンボを更新する。相手に与えるダメージの合計を返す
+    mutating func attack(with move: BattleMove) -> Int {
+        var total = 0
+        for judgement in move.judgements {
+            combo = judgement == .perfect ? combo + 1 : 0
+            total += Self.damage(for: judgement, attackType: move.attackType, combo: combo)
         }
-        return damage
+        return total
     }
 
-    /// ターンの判定（エリアごと。当てられなかったエリアは MISS）から反撃のダメージを決める
-    /// 全部 PERFECT ならかわす、MISS があれば全力、それ以外は半分
-    func counterDamage(for judgements: [TimingJudgement]) -> Int {
-        if judgements.contains(.miss) { return profile.attackPower }
-        if judgements.allSatisfy({ $0 == .perfect }) { return 0 }
-        return profile.attackPower / 2
+    mutating func takeDamage(_ damage: Int) {
+        hp = max(hp - damage, 0)
+    }
+}
+
+/// 対戦の進み具合
+/// 2 人とも同じ攻撃の結果（BattleMove）から同じ計算をするので、どちらの端末でも結果が食い違わない
+/// 乱数は使わない
+struct BattleState {
+    /// このターン数で決着しなければ、残り HP の割合が多いほうの勝ち
+    static let turnLimit = 10
+
+    private(set) var me: BattleFighter
+    private(set) var opponent: BattleFighter
+    /// 今のターン（1 から）
+    private(set) var turn = 1
+    /// 決着がついていなければ nil
+    private(set) var outcome: BattleOutcome?
+
+    init(myMonster: Monster, opponentMonster: Monster) {
+        me = BattleFighter(monster: myMonster)
+        opponent = BattleFighter(monster: opponentMonster)
     }
 
-    /// ターンの終わりにモンスターの反撃を受け、次のターンへ進む
-    mutating func receiveCounterattack(damage: Int) {
-        guard outcome == nil else { return }
-        playerHP = max(playerHP - damage, 0)
-        if playerHP == 0 {
-            outcome = .lost
-        } else if turn >= profile.turnLimit {
-            outcome = .escaped
-        } else {
-            turn += 1
+    /// 2 人の攻撃がそろったら、同時にダメージを与え合って次のターンへ進む
+    /// 与えたダメージと受けたダメージを返す
+    mutating func resolveTurn(myMove: BattleMove, opponentMove: BattleMove) -> (dealt: Int, taken: Int) {
+        guard outcome == nil else { return (0, 0) }
+        let dealt = me.attack(with: myMove)
+        let taken = opponent.attack(with: opponentMove)
+        opponent.takeDamage(dealt)
+        me.takeDamage(taken)
+
+        switch (me.hp, opponent.hp) {
+        case (0, 0): outcome = .draw
+        case (_, 0): outcome = .won
+        case (0, _): outcome = .lost
+        default:
+            if turn >= Self.turnLimit {
+                outcome = me.hpRatio > opponent.hpRatio ? .won : me.hpRatio < opponent.hpRatio ? .lost : .draw
+            } else {
+                turn += 1
+            }
         }
-    }
-
-    /// 捕獲を試みる。roll は 0〜1 の乱数で、成功率より小さければ成功
-    mutating func tryCapture(roll: Double) -> Bool {
-        guard outcome == nil else { return false }
-        guard roll < captureChance else { return false }
-        outcome = .captured
-        return true
+        return (dealt, taken)
     }
 }

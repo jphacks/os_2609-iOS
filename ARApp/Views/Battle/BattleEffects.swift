@@ -24,8 +24,7 @@ extension BattleViewModel.Event.Kind {
         case .hit(.perfect, _, _): .impact(weight: .heavy, intensity: 1)
         case .hit(.good, _, _): .impact(weight: .light)
         case .hit(.miss, _, _): .error
-        case .counterattack(let damage): damage > 0 ? .impact(flexibility: .rigid, intensity: 1) : .success
-        case .capture(let succeeded): succeeded ? .success : .error
+        case .turnResolved(let dealt, let taken): dealt >= taken ? .success : .impact(flexibility: .rigid, intensity: 1)
         }
     }
 }
