@@ -8,10 +8,16 @@ import SwiftUI
 /// リアルタイムバトル画面。画面の空いている所をタップして攻撃し、溜まったら必殺技を撃つ
 struct RealtimeBattleView: View {
     @State private var viewModel = RealtimeBattleViewModel()
-    /// タップした位置の波紋（タップできているかの確認用）
+    /// タップした位置の波紋。クールダウン中でも出るので、タップが届いているかがわかる
     @State private var tapRipple: TapRipple?
 
     private var state: RealtimeBattleState { viewModel.state }
+
+    /// 自分の攻撃が当たった出来事。敵の揺れやダメージ表示のきっかけにする
+    private var playerAttackEvent: RealtimeBattleViewModel.Event? {
+        guard let event = viewModel.lastEvent, case .playerAttack = event.kind else { return nil }
+        return event
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -25,12 +31,30 @@ struct RealtimeBattleView: View {
 
             // 2. 中央上：敵モンスター
             FighterImage(systemName: "flame.fill", color: .orange, size: 120)
+                .overlay {
+                    if let event = playerAttackEvent, case .playerAttack(let damage) = event.kind {
+                        FloatingDamage(text: "-\(damage)", color: .red)
+                            .id(event.id)
+                    }
+                }
+                // 攻撃が当たるたびに左右に揺れる
+                .phaseAnimator([0, -12, 12, -6, 0], trigger: playerAttackEvent?.id) { content, x in
+                    content.offset(x: x)
+                } animation: { _ in
+                    .linear(duration: 0.05)
+                }
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             Spacer(minLength: 0)
 
             // 3. 中央下：自分のモンスター
             FighterImage(systemName: "shield.lefthalf.filled", color: .blue, size: 90)
+                // 攻撃するたびに敵の方へ踏み込む
+                .phaseAnimator([CGSize.zero, CGSize(width: 24, height: -36), .zero], trigger: playerAttackEvent?.id) { content, offset in
+                    content.offset(offset)
+                } animation: { _ in
+                    .easeOut(duration: 0.08)
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // 4. 下部：自分の HP と必殺技ゲージ
@@ -67,6 +91,7 @@ struct RealtimeBattleView: View {
         .contentShape(Rectangle())
         .onTapGesture { location in
             tapRipple = TapRipple(location: location)
+            viewModel.attack()
         }
         .overlay {
             if let tapRipple {
@@ -96,6 +121,26 @@ private struct RippleView: View {
             .opacity(isExpanded ? 0 : 1)
             .onAppear {
                 withAnimation(.easeOut(duration: 0.4)) { isExpanded = true }
+            }
+    }
+}
+
+/// ダメージの数字。上に浮かびながら消える
+private struct FloatingDamage: View {
+    let text: String
+    let color: Color
+    @State private var isFloating = false
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 36, weight: .heavy, design: .rounded))
+            .foregroundStyle(color)
+            .shadow(radius: 2)
+            .offset(y: isFloating ? -80 : -20)
+            .opacity(isFloating ? 0 : 1)
+            .allowsHitTesting(false)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.6)) { isFloating = true }
             }
     }
 }
