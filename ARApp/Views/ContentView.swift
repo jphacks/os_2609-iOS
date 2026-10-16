@@ -19,6 +19,9 @@ struct ContentView: View {
             Tab("捕獲", systemImage: "camera.viewfinder") {
                 ARCaptureView(locationViewModel: locationViewModel)
             }
+            Tab("バトル", systemImage: "bolt.fill") {
+                BattleView()
+            }
         }
         .onAppear { locationViewModel.start() }
         .onDisappear { locationViewModel.stop() }
