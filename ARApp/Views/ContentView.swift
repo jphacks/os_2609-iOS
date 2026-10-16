@@ -10,6 +10,18 @@ import ARKit
 
 struct ContentView: View {
     var body: some View {
+        TabView {
+            Tab("マップ", systemImage: "map.fill") {
+                MapScreen()
+            }
+            Tab("捕獲", systemImage: "camera.viewfinder") {
+                captureView
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var captureView: some View {
         // ワールドトラッキングは A9 以降のチップを搭載した実機でのみ動作する（シミュレータは非対応）
         if ARWorldTrackingConfiguration.isSupported {
             ARCaptureView()
