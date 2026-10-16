@@ -18,6 +18,8 @@ final class SupabaseBattleService: BattleService {
         case opponentLeft
         /// 届いたモンスター名や判定が、アプリの知らない値だった
         case invalidData
+        /// 参加中の対戦がないのに、攻撃を送ろうとした・受け取ろうとした
+        case notInBattle
     }
 
     /// 部屋を作ってからこの時間待っても相手が来なければ、あきらめる（秒）
@@ -25,6 +27,8 @@ final class SupabaseBattleService: BattleService {
     private static let matchingTimeout: TimeInterval = 110
     /// 相手の攻撃をこの時間待っても届かなければ、相手がいなくなったとみなす（秒）
     private static let opponentTimeout: TimeInterval = 60
+    /// 攻撃を送るのに失敗したとき、何回まで試すか
+    private static let sendAttempts = 3
     /// Realtime を取りこぼしたときのために、データベースを直接見に行く間隔（秒）
     private static let fallbackFetchInterval: TimeInterval = 2
 
@@ -98,7 +102,7 @@ final class SupabaseBattleService: BattleService {
     }
 
     func send(_ move: BattleMove, turn: Int) async throws {
-        guard let battleID else { return }
+        guard let battleID else { throw ServiceError.notInBattle }
         let row = MoveRow(
             battleID: battleID,
             playerID: playerID,
@@ -106,11 +110,27 @@ final class SupabaseBattleService: BattleService {
             attackType: move.attackType.rawValue,
             judgements: move.judgements.map(\.rawValue)
         )
-        try await client.from("battle_moves").insert(row).execute()
+
+        // 通信が一瞬切れても対戦が終わらないように、少し待ってやり直す
+        // 書き込めたのに返事だけ届かなかった場合に備えて、同じターンの行がすでにあれば何もしない（ON CONFLICT DO NOTHING）
+        var attempt = 1
+        while true {
+            do {
+                try await client
+                    .from("battle_moves")
+                    .upsert(row, onConflict: "battle_id,player_id,turn", ignoreDuplicates: true)
+                    .execute()
+                return
+            } catch {
+                guard attempt < Self.sendAttempts, !Task.isCancelled else { throw error }
+                attempt += 1
+                try await Task.sleep(for: .milliseconds(500))
+            }
+        }
     }
 
     func opponentMove(turn: Int) async throws -> BattleMove {
-        guard let battleID else { throw ServiceError.opponentLeft }
+        guard let battleID else { throw ServiceError.notInBattle }
         let deadline = Date.now.addingTimeInterval(Self.opponentTimeout)
         var nextFetch = Date.now.addingTimeInterval(Self.fallbackFetchInterval)
 

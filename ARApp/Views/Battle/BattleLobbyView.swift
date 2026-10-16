@@ -11,6 +11,8 @@ struct BattleLobbyView: View {
     /// 推定した現在地。わからない間は相手を探せない
     let location: Location?
     let isSearching: Bool
+    /// 相手探しをやめて、片付けが終わるのを待っている
+    let isCancelling: Bool
     let errorMessage: String?
     let onFind: (Location) -> Void
     let onCancel: () -> Void
@@ -37,8 +39,12 @@ struct BattleLobbyView: View {
             if isSearching {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text("\(location?.name ?? "")で相手を探しています…")
-                    Button("やめる", role: .cancel, action: onCancel)
+                    if isCancelling {
+                        Text("相手探しをやめています…")
+                    } else {
+                        Text("\(location?.name ?? "")で相手を探しています…")
+                        Button("やめる", role: .cancel, action: onCancel)
+                    }
                 }
             } else if let location {
                 Button {
@@ -63,6 +69,7 @@ struct BattleLobbyView: View {
         myMonster: Monster.all[0],
         location: Location.registered[0],
         isSearching: false,
+        isCancelling: false,
         errorMessage: nil,
         onFind: { _ in },
         onCancel: {}
