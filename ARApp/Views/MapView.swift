@@ -27,9 +27,8 @@ struct MapView: View {
 
 #Preview {
     // ブースBのパターンを流すダミー。1 秒ほどで現在地が「ブースB」になる
-    let viewModel = LocationViewModel(
-        scanner: DummyBeaconScanner(rssiByBeacon: ["BeaconA": -80, "BeaconB": -66, "BeaconC": -45, "BeaconD": -72])
-    )
+    let boothB = Location.registered.first { $0.id == "booth_b" }!
+    let viewModel = LocationViewModel(scanner: DummyBeaconScanner(location: boothB))
     MapView(locationViewModel: viewModel)
         .onAppear { viewModel.start() }
 }

@@ -35,4 +35,13 @@ extension Location {
         Location(id: "boss_zone", name: "ボスゾーン", position: MapPosition(x: 0.32, y: 0.2),
                  fingerprint: [-66, -78, -74, -58]),
     ]
+
+    /// マップに描く通路。つながっている地点の ID の組
+    static let corridors: [(from: String, to: String)] = [
+        ("entrance", "booth_a"),
+        ("entrance", "booth_b"),
+        ("booth_a", "boss_zone"),
+        ("booth_b", "stairs"),
+        ("boss_zone", "stairs"),
+    ]
 }

@@ -17,7 +17,7 @@ struct IndoorMapView: View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack {
-                MapBackgroundView(locations: locations, size: size)
+                MapBackgroundView(locations: locations, corridors: Location.corridors, size: size)
 
                 ForEach(locations) { location in
                     LocationMarkerView(location: location, isCurrent: location.id == currentLocation?.id)
@@ -55,6 +55,7 @@ struct IndoorMapView: View {
 /// 簡易マップの背景。床と通路、各場所の部屋を図形で描く
 private struct MapBackgroundView: View {
     let locations: [Location]
+    let corridors: [(from: String, to: String)]
     let size: CGSize
 
     var body: some View {
@@ -63,11 +64,13 @@ private struct MapBackgroundView: View {
             Rectangle()
                 .fill(Color(red: 0.62, green: 0.84, blue: 0.62))
 
-            // 通路：地点を一覧の順につなぐ
+            // 通路：つながっている地点どうしを線で結ぶ
             Path { path in
-                path.addLines(locations.map { location in
-                    CGPoint(x: location.position.x * size.width, y: location.position.y * size.height)
-                })
+                for corridor in corridors {
+                    guard let from = point(of: corridor.from), let to = point(of: corridor.to) else { continue }
+                    path.move(to: from)
+                    path.addLine(to: to)
+                }
             }
             .stroke(Color(red: 0.95, green: 0.9, blue: 0.75),
                     style: StrokeStyle(lineWidth: 18, lineCap: .round, lineJoin: .round))
@@ -81,6 +84,11 @@ private struct MapBackgroundView: View {
                     .position(x: location.position.x * size.width, y: location.position.y * size.height)
             }
         }
+    }
+
+    private func point(of locationID: String) -> CGPoint? {
+        guard let location = locations.first(where: { $0.id == locationID }) else { return nil }
+        return CGPoint(x: location.position.x * size.width, y: location.position.y * size.height)
     }
 }
 
