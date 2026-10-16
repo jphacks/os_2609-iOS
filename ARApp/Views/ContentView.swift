@@ -6,32 +6,31 @@
 //
 
 import SwiftUI
-import ARKit
 
 struct ContentView: View {
+    /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
+    @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
+
     var body: some View {
         TabView {
             Tab("マップ", systemImage: "map.fill") {
-                MapScreen()
+                MapView(locationViewModel: locationViewModel)
             }
             Tab("捕獲", systemImage: "camera.viewfinder") {
-                captureView
+                ARCaptureView(locationViewModel: locationViewModel)
             }
         }
+        .onAppear { locationViewModel.start() }
+        .onDisappear { locationViewModel.stop() }
     }
 
-    @ViewBuilder
-    private var captureView: some View {
-        // ワールドトラッキングは A9 以降のチップを搭載した実機でのみ動作する（シミュレータは非対応）
-        if ARWorldTrackingConfiguration.isSupported {
-            ARCaptureView()
-        } else {
-            ContentUnavailableView(
-                "ARに対応していません",
-                systemImage: "arkit",
-                description: Text("このデバイスではARを利用できません。ARKit対応のiPhoneまたはiPadの実機で起動してください。")
-            )
-        }
+    /// シミュレータには Bluetooth がないので、ダミーのビーコンで「入口」にいることにする
+    private static func makeScanner() -> any BeaconScanner {
+        #if targetEnvironment(simulator)
+        DummyBeaconScanner()
+        #else
+        BLEBeaconScanner()
+        #endif
     }
 }
 

@@ -5,23 +5,23 @@
 
 import SwiftUI
 
-/// 屋内マップ本体。背景・場所・モンスター・レイド地点・プレイヤーを重ねて描く
+/// 屋内マップ本体。背景・地点・モンスター・レイド地点・プレイヤーを重ねて描く
 /// 位置は `MapPosition`（0〜1 の割合）を、実際の表示サイズに掛けて求める
 struct IndoorMapView: View {
-    let spots: [MapSpot]
+    let locations: [Location]
     var monsterSpots: [MonsterSpot] = []
     var raidSpots: [RaidSpot] = []
-    let currentSpot: MapSpot?
+    let currentLocation: Location?
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack {
-                MapBackgroundView(spots: spots, size: size)
+                MapBackgroundView(locations: locations, size: size)
 
-                ForEach(spots) { spot in
-                    SpotMarkerView(spot: spot, isCurrent: spot.id == currentSpot?.id)
-                        .position(point(for: spot.position, in: size))
+                ForEach(locations) { location in
+                    LocationMarkerView(location: location, isCurrent: location.id == currentLocation?.id)
+                        .position(point(for: location.position, in: size))
                 }
 
                 ForEach(raidSpots) { raid in
@@ -35,11 +35,11 @@ struct IndoorMapView: View {
                 }
 
                 // プレイヤーは一番手前に描く
-                if let currentSpot {
+                if let currentLocation {
                     PlayerMarkerView()
-                        .position(point(for: currentSpot.position, in: size))
+                        .position(point(for: currentLocation.position, in: size))
                         // 現在地が変わったら、新しい位置までなめらかに移動する
-                        .animation(.spring(duration: 0.6, bounce: 0.25), value: currentSpot.id)
+                        .animation(.spring(duration: 0.6, bounce: 0.25), value: currentLocation.id)
                 }
             }
         }
@@ -54,7 +54,7 @@ struct IndoorMapView: View {
 
 /// 簡易マップの背景。床と通路、各場所の部屋を図形で描く
 private struct MapBackgroundView: View {
-    let spots: [MapSpot]
+    let locations: [Location]
     let size: CGSize
 
     var body: some View {
@@ -63,30 +63,30 @@ private struct MapBackgroundView: View {
             Rectangle()
                 .fill(Color(red: 0.62, green: 0.84, blue: 0.62))
 
-            // 通路：場所を一覧の順につなぐ
+            // 通路：地点を一覧の順につなぐ
             Path { path in
-                path.addLines(spots.map { spot in
-                    CGPoint(x: spot.position.x * size.width, y: spot.position.y * size.height)
+                path.addLines(locations.map { location in
+                    CGPoint(x: location.position.x * size.width, y: location.position.y * size.height)
                 })
             }
             .stroke(Color(red: 0.95, green: 0.9, blue: 0.75),
                     style: StrokeStyle(lineWidth: 18, lineCap: .round, lineJoin: .round))
 
-            // 各場所の部屋
-            ForEach(spots) { spot in
+            // 各地点の部屋
+            ForEach(locations) { location in
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(red: 0.5, green: 0.74, blue: 0.55))
                     .stroke(.white.opacity(0.6), lineWidth: 2)
                     .frame(width: size.width * 0.26, height: size.height * 0.15)
-                    .position(x: spot.position.x * size.width, y: spot.position.y * size.height)
+                    .position(x: location.position.x * size.width, y: location.position.y * size.height)
             }
         }
     }
 }
 
-/// 場所の目印と名前
-private struct SpotMarkerView: View {
-    let spot: MapSpot
+/// 地点の目印と名前
+private struct LocationMarkerView: View {
+    let location: Location
     let isCurrent: Bool
 
     var body: some View {
@@ -94,7 +94,7 @@ private struct SpotMarkerView: View {
             Circle()
                 .fill(isCurrent ? .white : .white.opacity(0.7))
                 .frame(width: 10, height: 10)
-            Text(spot.name)
+            Text(location.name)
                 .font(.caption2.bold())
                 .foregroundStyle(.white)
                 .shadow(radius: 1)
@@ -168,10 +168,10 @@ private struct PlayerMarkerView: View {
 
 #Preview {
     IndoorMapView(
-        spots: MapSpot.all,
+        locations: Location.registered,
         monsterSpots: MonsterSpot.samples,
         raidSpots: RaidSpot.samples,
-        currentSpot: MapSpot.all[0]
+        currentLocation: Location.registered[0]
     )
         .padding()
 }

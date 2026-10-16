@@ -13,7 +13,7 @@ final class DummyBeaconScanner: BeaconScanner {
     private let rssiByBeacon: [String: Int]
     private var emitTask: Task<Void, Never>?
 
-    /// 初期値は「受付」に立っているときのパターン
+    /// 初期値は「入口」に立っているときのパターン
     init(rssiByBeacon: [String: Int] = ["BeaconA": -52, "BeaconB": -67, "BeaconC": -81, "BeaconD": -73]) {
         self.rssiByBeacon = rssiByBeacon
     }
