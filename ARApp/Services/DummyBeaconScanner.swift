@@ -2,10 +2,15 @@
 //  DummyBeaconScanner.swift
 //  ARApp
 //
+//  ⚠️⚠️⚠️ 開発用のコード ⚠️⚠️⚠️
+//  ESP32 がないとき（シミュレータ・プレビュー）に、本物のビーコンの代わりに使う。
+//  本番では使わないが、シミュレータとプレビューが動かなくなるので削除しない。
+//  使っている場所：ContentView の makeScanner()（シミュレータのとき）と、各 View の #Preview
+//
 
 import Foundation
 
-/// ESP32 がなくても動かせるダミー実装
+/// 【開発用】ESP32 がなくても動かせるダミー実装
 /// 指定した地点の RSSI のパターンに少し揺れを加えて、本物のビーコンのように流し続ける
 final class DummyBeaconScanner: BeaconScanner {
     var onReceive: ((_ beaconName: String, _ rssi: Int) -> Void)?

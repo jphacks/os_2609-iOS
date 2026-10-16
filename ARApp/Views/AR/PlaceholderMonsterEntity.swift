@@ -2,7 +2,7 @@
 //  PlaceholderMonsterEntity.swift
 //  ARApp
 //
-//  ⚠️⚠️⚠️ テスト用のコード ⚠️⚠️⚠️
+//  ⚠️⚠️⚠️ 開発用のコード ⚠️⚠️⚠️
 //  3D モデル（USDZ）を読み込めなかったときに、代わりに出す緑の球体。
 //  モデルが表示されることを確認できたら、このファイルごと削除してよい。
 //  削除するときは、MonsterEntity.swift の catch 内の
@@ -12,7 +12,7 @@
 import RealityKit
 import UIKit
 
-/// 【テスト用】モデルの代わりに出す緑の球体
+/// 【開発用】モデルの代わりに出す緑の球体
 enum PlaceholderMonsterEntity {
     static func make(size: Float) -> Entity {
         let radius = size / 2

@@ -23,7 +23,7 @@ enum MonsterEntity {
             return model
         } catch {
             print("モデル \(monster.modelName) を読み込めませんでした: \(error)")
-            // テスト用の球体。PlaceholderMonsterEntity.swift を消すときは `return Entity()` に置き換える
+            // 開発用の球体。PlaceholderMonsterEntity.swift を消すときは `return Entity()` に置き換える
             return PlaceholderMonsterEntity.make(size: monster.size)
         }
     }
