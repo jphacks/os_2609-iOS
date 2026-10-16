@@ -50,26 +50,43 @@ final class SupabaseBattleService: BattleService {
 
     func findOpponent(locationID: String, monster: Monster) async throws -> BattleMatch {
         await leave()
-        let row: BattleRow = try await client
-            .rpc("join_battle", params: JoinBattleParams(locationID: locationID, playerID: playerID, monster: monster.modelName))
-            .execute()
-            .value
+        do {
+            return try await joinAndWait(locationID: locationID, monster: monster)
+        } catch {
+            // キャンセルされたり失敗したりしたら、作った部屋が相手待ちのまま残らないように片付ける
+            // キャンセルされた Task の中で通信すると通信まで取り消されるので、別の Task で片付けて終わるのを待つ
+            await Task { await leave() }.value
+            throw error
+        }
+    }
+
+    /// join_battle で部屋に入り（または作り）、相手がそろうまで待つ
+    private func joinAndWait(locationID: String, monster: Monster) async throws -> BattleMatch {
+        // 途中でキャンセルされても通信は最後まで行い、部屋の ID を受け取ってから片付けられるようにする
+        // （通信ごと取り消すと、サーバーには部屋ができたのに ID がわからず消せなくなる）
+        let params = JoinBattleParams(locationID: locationID, playerID: playerID, monster: monster.modelName)
+        let row: BattleRow = try await Task { [client] in
+            try await client.rpc("join_battle", params: params).execute().value
+        }.value
         battleID = row.id
+        try Task.checkCancellation()
+
         let isPlayer1 = row.player1ID == playerID
         opponentMonsterName = isPlayer1 ? row.player2Monster : row.player1Monster
-
         try await startListening(battleID: row.id)
 
         // 自分が部屋を作った場合は、相手が入ってくるまで待つ
-        // 購読を始める前に入ってきた場合に備えて、もう一度データベースも見る
-        if opponentMonsterName == nil {
-            opponentMonsterName = try await fetchBattle(id: row.id).player2Monster
-        }
+        // Realtime を取りこぼしたときのために、ときどきデータベースも直接見る（購読を始める前に入ってきた場合もここで気づく）
         let deadline = Date.now.addingTimeInterval(Self.matchingTimeout)
+        var nextFetch = Date.now
         while opponentMonsterName == nil {
-            guard Date.now < deadline else {
-                await leave()
-                throw ServiceError.noOpponent
+            guard Date.now < deadline else { throw ServiceError.noOpponent }
+            if Date.now >= nextFetch {
+                // 通信が一瞬切れても失敗にせず、次の確認を待つ
+                if let battle = try? await fetchBattle(id: row.id), let name = battle.player2Monster {
+                    opponentMonsterName = name
+                }
+                nextFetch = Date.now.addingTimeInterval(Self.fallbackFetchInterval)
             }
             try await Task.sleep(for: .milliseconds(200))
         }
@@ -102,9 +119,12 @@ final class SupabaseBattleService: BattleService {
             if isOpponentGone { throw ServiceError.opponentLeft }
 
             // Realtime で届かないままのときは、データベースを直接見る
+            // 通信が一瞬切れても失敗にせず、次の確認を待つ（相手がいなくなったかはタイムアウトで判断する）
             if Date.now >= nextFetch {
-                try await fetchOpponentMoves(battleID: battleID)
-                isOpponentGone = try await fetchBattle(id: battleID).status == "finished"
+                try? await fetchOpponentMoves(battleID: battleID)
+                if let battle = try? await fetchBattle(id: battleID), battle.status == "finished" {
+                    isOpponentGone = true
+                }
                 nextFetch = Date.now.addingTimeInterval(Self.fallbackFetchInterval)
             }
             try await Task.sleep(for: .milliseconds(100))
