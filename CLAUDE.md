@@ -8,6 +8,9 @@ SwiftUI + ARKit + RealityKit で作る iOS 向け AR モンスター捕獲アプ
 - Step 単位で段階的に実装する。
 - ユーザーは ARKit / RealityKit を学習中。実装後は変更ファイルと役割、実機での確認手順を説明する。
 - 不要な抽象化や複雑な設計は避ける。状態やロジックが生まれた時点で必要な層を追加する。
+- ハッカソン用のため、ユニットテストや UI テストは書かない。画面に動作確認用のボタンなども置かない。動作はプレビューと実機で確認する。
+- 開発中だけ使うコード（テスト用の見た目、RSSI の表示、ダミー実装など）は、ファイル先頭に「⚠️ 開発用」と目立つコメントを書き、削除するときに一緒に消す場所も書いておく。
+- 使われていないコードは残さず削除する。
 - コミットメッセージは日本語で書く。
 
 ## アーキテクチャ：MVVM + Service 層
@@ -19,7 +22,9 @@ ARApp/
 ├── ViewModels/   画面の状態とロジック（@Observable）
 ├── Views/        SwiftUI の View
 │   └── AR/       ARView まわり（RealityKit / ARKit を扱うのはここだけ）
-└── Services/     外部とのやり取り（BLE / RSSI、将来のサーバー通信）
+├── Services/     外部とのやり取り（BLE / RSSI、将来のサーバー通信）
+└── Resources/    アプリに同梱するファイル
+    └── Models/   モンスターの 3D モデル（USDZ）。Kenney「Cube Pets」（CC0）を OBJ から変換したもの
 ```
 
 ### Views/AR の責務分担
@@ -45,7 +50,15 @@ SwiftUI の決まりとしての名前ではなく、役割がわかる名前を
 - **ViewModel の状態は `private(set)` にし、外からはメソッドを呼んで変更する。** 状態を変えるのは ViewModel 自身だけにする。
 - **Service は protocol で定義し、ViewModel に外から渡す。**
   - ESP32 がなくてもダミー実装で開発やテストができるようにするため。
+- **View の部品は、必要になった時点で切り出す。** 使い回す予定のない部品を先回りして作らない。
+  - body が長くなったら、同じファイル内の `private struct` に分ける（例：`IndoorMapView` の `LocationMarkerView`）。
+  - 同じ見た目を 2 つ以上の画面で使うようになったら、`Views/Components/` に共通の View として切り出す。1 か所でしか使わないうちは切り出さない。
+- **`ContentView` はタブを並べるだけ**にする。「AR に対応した端末か」など画面ごとの判定は、その画面の View の中で行う。
+- **画面をまたいで使う状態は `ContentView` で 1 つだけ作り、各画面に渡す。** 例：現在地の `LocationViewModel` はマップ画面と捕獲画面で共有する。画面ごとに作ると推定が別々に動き、現在地が食い違う。
+- **同じデータを複数の型に重複して持たせない。** 例：地点の ID・名前・マップ上の位置・フィンガープリントはすべて `Location` にまとめる。
+- **SwiftUI の View の名前は、画面も部品も `〜View` で終える**（例：`MapView`、`IndoorMapView`、`ARCaptureView`）。`ARViewContainer` は `UIViewRepresentable` の橋渡し役なので例外。
 - AR セッションのライフサイクル（`run` / `pause`）は `ARViewContainer` で管理する（`makeUIView` で run、`dismantleUIView` で pause）。
+  - **`TabView` の中で AR を使う画面は、表示中だけ `ARViewContainer` を置く**（`onAppear` / `onDisappear` で表示中かを持つ。例：`ARCaptureView`）。`TabView` は別のタブに切り替えても画面を残すので、そのままでは `dismantleUIView` が呼ばれず、カメラが動き続ける。
 
 ## プロジェクト設定
 

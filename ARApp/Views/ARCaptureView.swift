@@ -4,14 +4,26 @@
 //
 
 import SwiftUI
+import ARKit
 
 /// AR 捕獲画面。カメラ映像の上に状態メッセージと現在地を重ねる
 struct ARCaptureView: View {
+    let locationViewModel: LocationViewModel
     @State private var viewModel = ARCaptureViewModel()
-    @State private var locationViewModel = LocationViewModel(scanner: BLEBeaconScanner())
+    /// この画面が表示されているか
+    /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
+    @State private var isVisible = false
 
     var body: some View {
-        ARViewContainer(viewModel: viewModel)
+        // ワールドトラッキングは A9 以降のチップを搭載した実機でのみ動作する（シミュレータは非対応）
+        if ARWorldTrackingConfiguration.isSupported {
+            ZStack {
+                Color.black
+                if isVisible {
+                    // 外すと ARViewContainer の dismantleUIView が呼ばれ、セッションが止まる
+                    ARViewContainer(viewModel: viewModel)
+                }
+            }
             .ignoresSafeArea()
             .overlay(alignment: .top) {
                 Text(viewModel.statusMessage)
@@ -25,7 +37,14 @@ struct ARCaptureView: View {
                 LocationStatusView(viewModel: locationViewModel)
                     .padding(.bottom, 8)
             }
-            .onAppear { locationViewModel.start() }
-            .onDisappear { locationViewModel.stop() }
+            .onAppear { isVisible = true }
+            .onDisappear { isVisible = false }
+        } else {
+            ContentUnavailableView(
+                "ARに対応していません",
+                systemImage: "arkit",
+                description: Text("このデバイスではARを利用できません。ARKit対応のiPhoneまたはiPadの実機で起動してください。")
+            )
+        }
     }
 }
