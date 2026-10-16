@@ -10,24 +10,35 @@ import ARKit
 struct ARCaptureView: View {
     let locationViewModel: LocationViewModel
     @State private var viewModel = ARCaptureViewModel()
+    /// この画面が表示されているか
+    /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
+    @State private var isVisible = false
 
     var body: some View {
         // ワールドトラッキングは A9 以降のチップを搭載した実機でのみ動作する（シミュレータは非対応）
         if ARWorldTrackingConfiguration.isSupported {
-            ARViewContainer(viewModel: viewModel)
-                .ignoresSafeArea()
-                .overlay(alignment: .top) {
-                    Text(viewModel.statusMessage)
-                        .font(.headline)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .padding(.top, 8)
+            ZStack {
+                Color.black
+                if isVisible {
+                    // 外すと ARViewContainer の dismantleUIView が呼ばれ、セッションが止まる
+                    ARViewContainer(viewModel: viewModel)
                 }
-                .overlay(alignment: .bottom) {
-                    LocationStatusView(viewModel: locationViewModel)
-                        .padding(.bottom, 8)
-                }
+            }
+            .ignoresSafeArea()
+            .overlay(alignment: .top) {
+                Text(viewModel.statusMessage)
+                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, 8)
+            }
+            .overlay(alignment: .bottom) {
+                LocationStatusView(viewModel: locationViewModel)
+                    .padding(.bottom, 8)
+            }
+            .onAppear { isVisible = true }
+            .onDisappear { isVisible = false }
         } else {
             ContentUnavailableView(
                 "ARに対応していません",

@@ -35,5 +35,7 @@ final class ARSceneController {
     func stop() {
         anchoredSubscription?.cancel()
         anchoredSubscription = nil
+        // ARView ごとアンカーがなくなるので、次に表示したときは床を探すところからやり直す
+        viewModel.monsterAnchorStateChanged(isAnchored: false)
     }
 }
