@@ -3,34 +3,21 @@
 //  ARApp
 //
 
-import Foundation
-
-/// リアルタイムバトルの決着
-enum RealtimeBattleOutcome {
-    /// 敵の HP を 0 にした
-    case won
-    /// プレイヤーの HP が 0 になった
-    case lost
-}
-
-/// リアルタイムバトルの HP やゲージ。将来サーバーと同期するときは、この値をやり取りする想定
+/// リアルタイムバトル全体の状態。誰から見ても同じ内容になるよう、「自分」「敵」ではなく ID で持つ
+/// 将来サーバーと同期するときは、この値（または中の RealtimeFighter）をやり取りする想定
 /// （タイミングバトルの BattleState とは別物）
-struct RealtimeBattleState {
-    static let playerMaxHP = 100
-    static let enemyMaxHP = 300
-    static let specialGaugeMax = 100
+struct RealtimeBattleState: Codable {
+    var fighters: [FighterID: RealtimeFighter]
+    /// 勝った人の ID。決着がついていなければ nil
+    var winner: FighterID?
 
-    let playerName: String
-    let enemyName: String
-    var playerHP = RealtimeBattleState.playerMaxHP
-    var enemyHP = RealtimeBattleState.enemyMaxHP
-    /// 必殺技ゲージ（0〜specialGaugeMax）
-    var specialGauge = 0
-    /// この時刻になるまで次の通常攻撃はできない（クールダウン）
-    var nextNormalAttackAt = Date.distantPast
-    /// 決着がついていなければ nil
-    var outcome: RealtimeBattleOutcome?
+    /// 1 対 1 のバトルを始める
+    init(_ first: RealtimeFighter, _ second: RealtimeFighter) {
+        fighters = [first.id: first, second.id: second]
+    }
 
-    /// ゲージが満タンなら必殺技を使える
-    var canUseSpecial: Bool { specialGauge >= RealtimeBattleState.specialGaugeMax }
+    /// id の人の対戦相手の ID
+    func opponentID(of id: FighterID) -> FighterID? {
+        fighters.keys.first { $0 != id }
+    }
 }

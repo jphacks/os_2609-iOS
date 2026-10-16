@@ -3,58 +3,40 @@
 //  ARApp
 //
 
-import Foundation
-
-/// リアルタイムバトルのルール（攻撃・ダメージ・勝敗）。状態を受け取って書き換えるだけで、タイマーや画面は持たない
-/// 時刻は外から渡すので、同じ入力なら必ず同じ結果になる（将来サーバーで同じ判定をしやすくするため）
+/// リアルタイムバトルのルール（攻撃・ダメージ・勝敗）。状態を受け取って書き換えるだけで、タイマーや画面、通信は持たない
+/// 自分の行動も相手の行動も同じ apply を通すので、どちらの端末で計算しても同じ結果になる
 enum RealtimeBattleEngine {
     static let normalAttackDamage = 10
-    /// 通常攻撃のクールダウン（秒）
-    static let normalAttackCooldown: TimeInterval = 0.3
+    /// 通常攻撃のクールダウン（秒）。連打の制限は入力した端末で行うので、状態には持たない
+    static let normalAttackCooldown: Double = 0.3
     /// 通常攻撃が当たるたびに溜まる必殺技ゲージ
     static let specialGaugeGain = 10
     static let specialAttackDamage = 50
-    static let enemyAttackDamage = 10
-    /// 敵が攻撃する間隔（秒）
-    static let enemyAttackInterval: TimeInterval = 2
 
-    /// 通常攻撃。当たれば与えたダメージを返し、クールダウン中や決着後で攻撃できなければ nil を返す
-    static func normalAttack(_ state: inout RealtimeBattleState, at now: Date) -> Int? {
-        guard state.outcome == nil, state.enemyHP > 0, now >= state.nextNormalAttackAt else { return nil }
+    /// attacker が action を行う。当たれば与えたダメージを返し、決着後やゲージ不足で行えなければ nil を返す
+    static func apply(_ action: BattleAction, by attacker: FighterID, to state: inout RealtimeBattleState) -> Int? {
+        guard state.winner == nil,
+              var me = state.fighters[attacker],
+              let targetID = state.opponentID(of: attacker),
+              var target = state.fighters[targetID]
+        else { return nil }
 
-        let damage = damageEnemy(&state, by: normalAttackDamage)
-        state.nextNormalAttackAt = now.addingTimeInterval(normalAttackCooldown)
-        state.specialGauge = min(state.specialGauge + specialGaugeGain, RealtimeBattleState.specialGaugeMax)
-        return damage
-    }
-
-    /// 必殺技。ゲージが満タンのときだけ使え、使うとゲージは 0 に戻る。使えなければ nil を返す
-    static func specialAttack(_ state: inout RealtimeBattleState) -> Int? {
-        guard state.outcome == nil, state.enemyHP > 0, state.canUseSpecial else { return nil }
-
-        let damage = damageEnemy(&state, by: specialAttackDamage)
-        state.specialGauge = 0
-        return damage
-    }
-
-    /// 敵の HP を減らし、0 になったら勝利にする。実際に与えたダメージを返す
-    private static func damageEnemy(_ state: inout RealtimeBattleState, by amount: Int) -> Int {
-        let damage = min(amount, state.enemyHP)
-        state.enemyHP -= damage
-        if state.enemyHP == 0 {
-            state.outcome = .won
+        let damage: Int
+        switch action {
+        case .normalAttack:
+            damage = min(normalAttackDamage, target.hp)
+            me.specialGauge = min(me.specialGauge + specialGaugeGain, RealtimeFighter.specialGaugeMax)
+        case .specialAttack:
+            guard me.canUseSpecial else { return nil }
+            damage = min(specialAttackDamage, target.hp)
+            me.specialGauge = 0
         }
-        return damage
-    }
 
-    /// 敵の攻撃。プレイヤーの HP が 0 になったら敗北にする。決着後は nil を返す
-    static func enemyAttack(_ state: inout RealtimeBattleState) -> Int? {
-        guard state.outcome == nil else { return nil }
-
-        let damage = min(enemyAttackDamage, state.playerHP)
-        state.playerHP -= damage
-        if state.playerHP == 0 {
-            state.outcome = .lost
+        target.hp -= damage
+        state.fighters[attacker] = me
+        state.fighters[targetID] = target
+        if target.hp == 0 {
+            state.winner = attacker
         }
         return damage
     }

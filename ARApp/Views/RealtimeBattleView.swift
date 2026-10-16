@@ -7,26 +7,24 @@ import SwiftUI
 
 /// リアルタイムバトル画面。画面の空いている所をタップして攻撃し、溜まったら必殺技を撃つ
 struct RealtimeBattleView: View {
-    @State private var viewModel = RealtimeBattleViewModel()
+    @State private var viewModel = RealtimeBattleViewModel(opponent: LocalAIOpponent())
     /// タップした位置の波紋。クールダウン中でも出るので、タップが届いているかがわかる
     @State private var tapRipple: TapRipple?
 
-    private var state: RealtimeBattleState { viewModel.state }
-
     var body: some View {
         VStack(spacing: 16) {
-            // 1. 上部：敵の名前と HP
+            // 1. 上部：相手の名前と HP
             StatBar(
-                title: state.enemyName,
-                value: state.enemyHP,
-                maxValue: RealtimeBattleState.enemyMaxHP,
+                title: viewModel.opponentFighter.name,
+                value: viewModel.opponentFighter.hp,
+                maxValue: viewModel.opponentFighter.maxHP,
                 color: .red
             )
 
-            // 2. 中央上：敵モンスター
+            // 2. 中央上：相手のモンスター
             FighterImage(systemName: "flame.fill", color: .orange, size: 120)
                 .overlay {
-                    if let hit = viewModel.lastHitOnEnemy {
+                    if let hit = viewModel.lastHitOnOpponent {
                         FloatingDamage(
                             text: "-\(hit.damage)",
                             color: hit.isSpecial ? .yellow : .red,
@@ -35,12 +33,12 @@ struct RealtimeBattleView: View {
                         .id(hit.id)
                     }
                 }
-                .shake(trigger: viewModel.lastHitOnEnemy?.id)
-                // 敵の攻撃のたびに自分の方へ踏み込む
-                .lunge(CGSize(width: -24, height: 36), trigger: viewModel.lastHitOnPlayer?.id)
+                .shake(trigger: viewModel.lastHitOnOpponent?.id)
+                // 相手の攻撃のたびに自分の方へ踏み込む
+                .lunge(CGSize(width: -24, height: 36), trigger: viewModel.lastHitOnMe?.id)
                 // 倒したら薄くなる
-                .opacity(state.outcome == .won ? 0.2 : 1)
-                .animation(.easeOut(duration: 0.5), value: state.outcome)
+                .opacity(viewModel.outcome == .won ? 0.2 : 1)
+                .animation(.easeOut(duration: 0.5), value: viewModel.outcome)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             Spacer(minLength: 0)
@@ -48,29 +46,29 @@ struct RealtimeBattleView: View {
             // 3. 中央下：自分のモンスター
             FighterImage(systemName: "shield.lefthalf.filled", color: .blue, size: 90)
                 .overlay {
-                    if let hit = viewModel.lastHitOnPlayer {
-                        FloatingDamage(text: "-\(hit.damage)", color: .purple, fontSize: 36)
+                    if let hit = viewModel.lastHitOnMe {
+                        FloatingDamage(text: "-\(hit.damage)", color: .purple, fontSize: hit.isSpecial ? 64 : 36)
                             .id(hit.id)
                     }
                 }
-                .shake(trigger: viewModel.lastHitOnPlayer?.id)
-                // 攻撃するたびに敵の方へ踏み込む
-                .lunge(CGSize(width: 24, height: -36), trigger: viewModel.lastHitOnEnemy?.id)
+                .shake(trigger: viewModel.lastHitOnMe?.id)
+                // 攻撃するたびに相手の方へ踏み込む
+                .lunge(CGSize(width: 24, height: -36), trigger: viewModel.lastHitOnOpponent?.id)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // 4. 下部：自分の HP と必殺技ゲージ
             VStack(spacing: 8) {
                 StatBar(
-                    title: state.playerName,
-                    value: state.playerHP,
-                    maxValue: RealtimeBattleState.playerMaxHP,
+                    title: viewModel.me.name,
+                    value: viewModel.me.hp,
+                    maxValue: viewModel.me.maxHP,
                     color: .green
                 )
                 StatBar(
                     title: "必殺技ゲージ",
-                    value: state.specialGauge,
-                    maxValue: RealtimeBattleState.specialGaugeMax,
-                    color: state.canUseSpecial ? .orange : .yellow
+                    value: viewModel.me.specialGauge,
+                    maxValue: RealtimeFighter.specialGaugeMax,
+                    color: viewModel.me.canUseSpecial ? .orange : .yellow
                 )
             }
 
@@ -78,14 +76,14 @@ struct RealtimeBattleView: View {
             Button {
                 viewModel.useSpecial()
             } label: {
-                Label(state.canUseSpecial ? "必殺技 READY!" : "必殺技", systemImage: "bolt.fill")
+                Label(viewModel.me.canUseSpecial ? "必殺技 READY!" : "必殺技", systemImage: "bolt.fill")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
             .tint(.yellow)
-            .disabled(!state.canUseSpecial)
+            .disabled(!viewModel.me.canUseSpecial)
         }
         .padding()
         // 空いている所もタップできるようにする。ボタンのタップはボタンが優先される
@@ -104,25 +102,25 @@ struct RealtimeBattleView: View {
         }
         .overlay {
             // 必殺技が当たった瞬間、画面全体を光らせる
-            if let hit = viewModel.lastHitOnEnemy, hit.isSpecial {
+            if let hit = viewModel.lastHitOnOpponent, hit.isSpecial {
                 FlashView()
                     .id(hit.id)
             }
         }
         .overlay {
             // 決着後は結果を全面に出す。下の画面へのタップも遮る
-            if let outcome = state.outcome {
+            if let outcome = viewModel.outcome {
                 ResultOverlay(outcome: outcome) {
                     viewModel.retry()
                 }
                 .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.3), value: state.outcome)
-        // 画面が出ている間だけ敵が攻撃する。画面が消えると自動でキャンセルされ、
+        .animation(.easeOut(duration: 0.3), value: viewModel.outcome)
+        // 画面が出ている間だけ相手の行動を受け取る。画面が消えると自動でキャンセルされ、
         // リトライで battleID が変わると、前の Task を止めてから新しく始める
         .task(id: viewModel.battleID) {
-            await viewModel.runEnemyAttacks()
+            await viewModel.receiveOpponentActions()
         }
     }
 }
@@ -149,7 +147,7 @@ private extension View {
 
 /// 勝敗とリトライボタン
 private struct ResultOverlay: View {
-    let outcome: RealtimeBattleOutcome
+    let outcome: RealtimeBattleViewModel.Outcome
     let onRetry: () -> Void
 
     var body: some View {
