@@ -21,6 +21,7 @@ final class LocationViewModel {
     private(set) var currentLocation: Location?
     /// 推定に使った各ビーコンの RSSI。並びは `Location.beaconNames` と同じ
     /// 地点を登録するときは、その場所でこの値を控えて `Location.registered` に書く
+    /// 【開発用】LocationStatusView でしか使っていない。あの View を消すときに一緒に消す
     private(set) var currentRSSI: [Int] = []
 
     var statusMessage: String {
