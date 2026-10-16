@@ -20,7 +20,9 @@ ARApp/
 ├── ViewModels/   画面の状態とロジック（@Observable）
 ├── Views/        SwiftUI の View
 │   └── AR/       ARView まわり（RealityKit / ARKit を扱うのはここだけ）
-└── Services/     外部とのやり取り（BLE / RSSI、将来のサーバー通信）
+├── Services/     外部とのやり取り（BLE / RSSI、将来のサーバー通信）
+└── Resources/    アプリに同梱するファイル
+    └── Models/   モンスターの 3D モデル（USDZ）。Kenney「Cube Pets」（CC0）を OBJ から変換したもの
 ```
 
 ### Views/AR の責務分担
