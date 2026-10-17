@@ -16,7 +16,7 @@ create table battles (
   -- waiting：相手待ち / playing：対戦中 / finished：終わった（途中でやめた場合も）
   status text not null default 'waiting' check (status in ('waiting', 'playing', 'finished')),
   player1_id uuid not null,
-  -- モンスターのモデル名（Monster.modelName。例：'animal-cat'）
+  -- モンスターのモデル名（Monster.modelName。例：'monster-bunny'）
   player1_monster text not null,
   player2_id uuid,
   player2_monster text,

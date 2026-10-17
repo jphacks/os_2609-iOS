@@ -27,6 +27,12 @@ struct ARViewContainer: UIViewRepresentable {
         // 床にアンカーを置くため、水平面の検出を有効にする
         let configuration = ARWorldTrackingConfiguration()
         configuration.planeDetection = [.horizontal]
+        // カメラ映像から部屋の明るさや色を取り込み、モンスターを周りと同じ光で照らす
+        // 自分でセッションを設定すると初期値は .none になり、暗い代わりの光で照らされる
+        configuration.environmentTexturing = .automatic
+        // モンスターのテクスチャは落ち着いた色なので、光を約 2.4 倍（2 の 1.25 乗）にして見やすくする
+        // 明るすぎる・暗すぎるときはこの値で調整する（0 で元の明るさ、1 で 2 倍、1.5 で約 2.8 倍）
+        arView.environment.lighting.intensityExponent = 1.25
         arView.session.run(configuration)
 
         context.coordinator.placeMonster(in: arView)
