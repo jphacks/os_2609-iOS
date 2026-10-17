@@ -27,8 +27,8 @@ struct BattleView: View {
                 BattleLobbyView(
                     myMonster: viewModel.myMonster,
                     location: locationViewModel.currentLocation,
-                    isSearching: viewModel.phase == .searching,
-                    isCancelling: viewModel.isCancellingSearch,
+                    isSearching: viewModel.phase == .searching || viewModel.phase == .cancellingSearch,
+                    isCancelling: viewModel.phase == .cancellingSearch,
                     errorMessage: viewModel.errorMessage,
                     onFind: { viewModel.findOpponent(locationID: $0.id) },
                     onCancel: { viewModel.cancelSearch() }

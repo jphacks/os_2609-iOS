@@ -16,6 +16,8 @@ final class BattleViewModel {
         case lobby
         /// 対戦相手を探している
         case searching
+        /// 相手探しをやめて、片付けが終わるのを待っている
+        case cancellingSearch
         /// 攻撃方法を選んでいる
         case choosingAction
         /// カーソルが動いている
@@ -51,8 +53,6 @@ final class BattleViewModel {
     private(set) var phase = Phase.lobby
     /// 通信に失敗したときに出すメッセージ
     private(set) var errorMessage: String?
-    /// 相手探しをやめて、片付けが終わるのを待っている
-    private(set) var isCancellingSearch = false
 
     private(set) var attackType = AttackType.normal
     /// 今のターンのゲージ。最初の攻撃までは判定エリアなし
@@ -118,14 +118,13 @@ final class BattleViewModel {
     /// 片付けが終わってからロビーに戻る
     /// 終わる前に次の相手探しを始めると、前の片付けが新しい相手探しの状態まで消してしまうため
     func cancelSearch() {
-        guard phase == .searching, !isCancellingSearch, let searchTask else { return }
-        isCancellingSearch = true
+        guard phase == .searching, let searchTask else { return }
+        phase = .cancellingSearch
         searchTask.cancel()
         Task {
             await searchTask.value
             // キャンセルと同時にマッチングが終わっていた場合に備えて、対戦からも抜ける
             await service.leave()
-            isCancellingSearch = false
             phase = .lobby
         }
     }
