@@ -149,8 +149,8 @@ final class BattleViewModel {
     /// STOP が押された瞬間の経過時間で判定する
     /// エリアの外（または当て済みのエリア）で押すと MISS。どちらでもタップを 1 回使う
     func stop(at date: Date = .now) {
-        // ヒットストップ中の連打は受け付けない
-        guard phase == .attacking, remainingTaps > 0, date >= hitStopUntil else { return }
+        // カーソルが動き出す前と、ヒットストップ中の連打は受け付けない
+        guard phase == .attacking, remainingTaps > 0, date >= startedAt, date >= hitStopUntil else { return }
 
         let judgement: TimingJudgement
         if let result = gauge.judge(elapsed: date.timeIntervalSince(startedAt)),
