@@ -26,13 +26,13 @@ final class BattleARSceneController {
 
     /// モンスターの大きさ。現実の大きさ（Monster.size）に掛ける
     /// 手前の自分のモンスターは、現実の大きさのままだと画面からはみ出すので小さくする
-    /// 相手は、捕獲画面と同じ現実の大きさにする（野生のモンスターがバトルに入ったときに縮んで見えないように）
-    static let mySizeScale: Float = 0.6
-    static let opponentSizeScale: Float = 1.0
+    /// 相手は、自分より大きくして見やすくする
+    static let mySizeScale: Float = 0.5
+    static let opponentSizeScale: Float = 0.8
     /// 床が見つかったときのカメラから見た、自分のモンスターまでの距離（m）
-    static let myDistance: Float = 1.0
+    static let myDistance: Float = 1.1
     /// 相手のモンスターまでの距離（m）。野生のモンスターとのバトルでは、これより遠くにいたら、この距離まで引き寄せる
-    static let opponentDistance: Float = 2.2
+    static let opponentDistance: Float = 2.5
     /// 正面から左右にずらす距離（m）。自分は左、相手は右に置き、斜めに向かい合わせる
     static let sideOffset: Float = 0.35
     /// 攻撃するときに相手の方へ踏み込む距離（m）と、踏み込むのにかける時間（秒）
