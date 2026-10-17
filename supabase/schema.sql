@@ -6,7 +6,7 @@
 -- 前に作ったテーブルと関数を消す（タイミングバトルで使っていた battle_moves も含む）
 -- テーブルを消すと、Realtime の設定とポリシーも一緒に消える
 drop table if exists battle_actions, battle_moves, battles cascade;
-drop function if exists join_battle, keep_waiting, finish_battle;
+drop function if exists join_battle, keep_waiting, finish_battle, check_battle_action;
 
 -- 対戦 1 回ぶん。player1 が部屋を作って待ち、player2 が入ると始まる
 -- 場所は問わず、対戦相手を待っている人どうしで対戦する
@@ -33,10 +33,59 @@ create table battle_actions (
   -- その人の何回目の行動か（1 から）。受け取る側はこの順に反映し、抜けていたら届くまで待つ
   seq int not null,
   -- BattleAction の rawValue
-  action text not null check (action in ('normalAttack', 'specialAttack')),
+  action text not null check (action in ('normalAttack', 'specialAttack', 'fever', 'feverAttack')),
   created_at timestamptz not null default now(),
   primary key (battle_id, player_id, seq)
 );
+
+-- フィーバーが正しく使われているかを、書き込む前に確かめる
+-- アプリを書き換えて、ゲージが溜まっていないのにフィーバーしたり、ダメージ 2 倍の攻撃を出し続けたりできないようにする
+-- - fever：前のフィーバーのあとに、通常攻撃（normalAttack）を 10 回以上している（BattleEngine の feverGaugeGain が 10 で、満タンが 100）
+-- - feverAttack：最後のフィーバーから 5 秒以内（BattleEngine の feverDuration）
+--   送るのが遅れることがあるので 3 秒の余裕を持たせる
+-- 確かめられないときは書き込みを断る。断られたアプリは、送れなかったとして対戦をやめる
+create or replace function check_battle_action()
+returns trigger
+language plpgsql
+as $$
+declare
+  last_fever battle_actions;
+begin
+  -- 書き込めたのに返事が届かず、同じ行を送り直してきたときは、もう確かめ終わっているので通す（書き込みは ON CONFLICT で無視される）
+  if exists (
+    select 1 from battle_actions
+    where battle_id = new.battle_id and player_id = new.player_id and seq = new.seq
+  ) then
+    return new;
+  end if;
+
+  if new.action not in ('fever', 'feverAttack') then
+    return new;
+  end if;
+
+  select * into last_fever from battle_actions
+  where battle_id = new.battle_id and player_id = new.player_id and action = 'fever' and seq < new.seq
+  order by seq desc
+  limit 1;
+
+  if new.action = 'fever' then
+    if (
+      select count(*) from battle_actions
+      where battle_id = new.battle_id and player_id = new.player_id and action = 'normalAttack'
+        and seq < new.seq and seq > coalesce(last_fever.seq, 0)
+    ) < 10 then
+      raise exception 'フィーバーゲージが溜まっていません';
+    end if;
+  elsif last_fever.seq is null or last_fever.created_at < now() - interval '8 seconds' then
+    raise exception 'フィーバー中ではありません';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger check_battle_action
+before insert on battle_actions
+for each row execute function check_battle_action();
 
 -- 相手が入ってきたこと・相手の行動をすぐに受け取れるように、Realtime で変更を流す
 alter publication supabase_realtime add table battles, battle_actions;

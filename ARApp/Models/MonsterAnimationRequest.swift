@@ -24,4 +24,6 @@ struct MonsterAnimationRequest {
     /// 流し始めるまでの待ち時間（秒）。攻撃の動きが当たるタイミングに、のけぞりを合わせるときに使う
     var delay: Double = 0
     var ending = Ending.backToLoop
+    /// 流す速さ。1 で普通の速さ、0.5 で半分の速さ（とどめを刺されて倒れるときのスローモーションなど）
+    var speed: Double = 1
 }

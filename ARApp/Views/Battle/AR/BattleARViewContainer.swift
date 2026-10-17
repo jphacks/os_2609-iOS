@@ -84,6 +84,12 @@ struct BattleARViewContainer: UIViewRepresentable {
     /// 攻撃が当たった出来事。変わるたびに、攻撃した側のモンスターが踏み込み、受けた側の頭の上にダメージの数字が出る
     let hitOnOpponent: BattleViewModel.Hit?
     let hitOnMe: BattleViewModel.Hit?
+    /// 相手の必殺技の予告。変わるたびに、相手のモンスターが赤く点滅する
+    let danger: BattleViewModel.Danger?
+    /// フィーバー中は、自分のモンスターから金色の光が立ちのぼる
+    let isFeverActive: Bool
+    /// 勝ちが確定したら、自分のモンスターから金色の火花が散る
+    let isVictory: Bool
     /// 2 体とも床に置き終わったときに呼ばれる
     let onPlaced: () -> Void
 
@@ -119,7 +125,10 @@ struct BattleARViewContainer: UIViewRepresentable {
             myAnimation: myAnimation,
             opponentAnimation: opponentAnimation,
             hitOnOpponent: hitOnOpponent,
-            hitOnMe: hitOnMe
+            hitOnMe: hitOnMe,
+            danger: danger,
+            isFeverActive: isFeverActive,
+            isVictory: isVictory
         )
     }
 
