@@ -25,12 +25,14 @@ final class BattleARSceneController {
     }
 
     /// モンスターの大きさ。現実の大きさ（Monster.size）に掛ける
-    /// 現実の大きさのままだと、手前の自分のモンスターが画面からはみ出すので小さくする
-    static let sizeScale: Float = 0.5
+    /// 手前の自分のモンスターは、現実の大きさのままだと画面からはみ出すので小さくする
+    /// 相手は、捕獲画面と同じ現実の大きさにする（野生のモンスターがバトルに入ったときに縮んで見えないように）
+    static let mySizeScale: Float = 0.6
+    static let opponentSizeScale: Float = 1.0
     /// 床が見つかったときのカメラから見た、自分のモンスターまでの距離（m）
-    static let myDistance: Float = 1.2
-    /// 相手のモンスターまでの距離（m）
-    static let opponentDistance: Float = 2.8
+    static let myDistance: Float = 1.0
+    /// 相手のモンスターまでの距離（m）。野生のモンスターとのバトルでは、これより遠くにいたら、この距離まで引き寄せる
+    static let opponentDistance: Float = 2.2
     /// 正面から左右にずらす距離（m）。自分は左、相手は右に置き、斜めに向かい合わせる
     static let sideOffset: Float = 0.35
     /// 攻撃するときに相手の方へ踏み込む距離（m）と、踏み込むのにかける時間（秒）
@@ -73,11 +75,10 @@ final class BattleARSceneController {
     static let sparkForwardOffset: Float = 0.15
     /// 矢印を出す位置の、画面の端からの距離（pt）。上と下の HP の表示に重ならないよう、内側に出す
     static let arrowInset: CGFloat = 120
-    /// 野生のモンスターとのバトルで、自分のモンスターと相手のモンスターの間を空ける距離（m）の最大と最小
-    /// 相手がカメラに近いときは、自分のモンスターがカメラに近づきすぎないよう、間を詰める
-    static let handoffSpacingRange: ClosedRange<Float> = 0.6...(opponentDistance - myDistance)
-    /// 野生のモンスターとのバトルで、自分のモンスターをカメラから最低限離す距離（m）
-    static let handoffMinimumMyDistance: Float = 0.6
+    /// 野生のモンスターとのバトルで、相手がカメラに近いときの、自分のモンスターまでの距離（m）の最小と、2 体の間の距離（m）の最小
+    /// 相手が近いときは、自分のモンスターをカメラに近づけ、2 体の間も詰める
+    static let handoffMinimumMyDistance: Float = 0.5
+    static let handoffMinimumSpacing: Float = 0.6
 
     private let myMonster: Monster
     private let opponentMonster: Monster
@@ -128,8 +129,8 @@ final class BattleARSceneController {
     private var damageMeshes: [String: MeshResource] = [:]
 
     /// 床に置いたときのモンスターの高さ（m）。ダメージの数字を頭の上に出すのに使う
-    private var myHeight: Float { myMonster.size * Self.sizeScale }
-    private var opponentHeight: Float { opponentMonster.size * Self.sizeScale }
+    private var myHeight: Float { myMonster.size * Self.mySizeScale }
+    private var opponentHeight: Float { opponentMonster.size * Self.opponentSizeScale }
 
     init(myMonster: Monster, opponentMonster: Monster, arHandoff: ARHandoff?, onPlaced: @escaping () -> Void) {
         self.myMonster = myMonster
@@ -330,16 +331,18 @@ final class BattleARSceneController {
         // 真下を向いていると前がわからないので、そのときはワールドの -Z を前にする
         forward = simd_length(forward) > 0.1 ? simd_normalize(forward) : [0, -1]
 
-        // 野生のモンスターとのバトル：相手は、捕獲画面でいた場所にそのまま置く
+        // 野生のモンスターとのバトル：相手は、捕獲画面でいた場所に置く（遠ければ、同じ方向のまま opponentDistance まで引き寄せる）
         // 自分は、自分（カメラ）と相手を結ぶ線の上で、相手の手前に置く（相手が真正面になるよう、左にずらす）
         if let arHandoff {
-            let opponent = SIMD2(arHandoff.opponentPosition.x, arHandoff.opponentPosition.z)
-            let toOpponent = opponent - cameraPosition
-            let distance = simd_length(toOpponent)
-            let direction = distance > 0.1 ? toOpponent / distance : forward
+            let wild = SIMD2(arHandoff.opponentPosition.x, arHandoff.opponentPosition.z)
+            let toWild = wild - cameraPosition
+            let wildDistance = simd_length(toWild)
+            let direction = wildDistance > 0.1 ? toWild / wildDistance : forward
             let right = SIMD2(-direction.y, direction.x)
-            let spacing = min(max(distance - Self.handoffMinimumMyDistance, Self.handoffSpacingRange.lowerBound), Self.handoffSpacingRange.upperBound)
-            let me = opponent - direction * spacing - right * Self.sideOffset
+            let opponentDistance = min(wildDistance, Self.opponentDistance)
+            let myDistance = max(min(Self.myDistance, opponentDistance - Self.handoffMinimumSpacing), Self.handoffMinimumMyDistance)
+            let opponent = cameraPosition + direction * opponentDistance
+            let me = cameraPosition + direction * myDistance - right * Self.sideOffset
             return (me, opponent, arHandoff.opponentPosition.y)
         }
 
