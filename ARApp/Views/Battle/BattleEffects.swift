@@ -5,20 +5,30 @@
 
 import SwiftUI
 
-/// バトル画面の演出（揺れ、タップの波紋、画面の光、続けて当てた回数）と、演出のタイミング
-/// 踏み込みとダメージの数字は AR の中で見せる（BattleARSceneController）
+/// バトル画面の演出（揺れ、タップの波紋、画面の光、画面の縁の光、続けて当てた回数）と、演出のタイミング
+/// フィーバー・相手の必殺技の予告・勝利の演出は、それぞれ FeverComponent、DangerComponent、VictoryComponent にある
+/// 踏み込み、モンスターが光る演出、火花、ダメージの数字は AR の中で見せる（BattleARSceneController）
+/// 当たったときの音は BattleSoundPlayer が鳴らす
 
 extension BattleViewModel.Hit {
     /// 必殺技を撃つ前の溜めの動き
     static let specialCharge = MonsterAnimation.jump
-    /// 攻撃の動きを流し始めてから、相手に当たるまでの時間（秒）
-    static let attackImpactTime = 0.25
+    /// 通常攻撃で、タップしてから相手に当たるまでの時間（秒）
+    /// タップしてすぐに当たったと感じられるよう、攻撃の動きを待たずに、踏み込みが届くころに当てる
+    static let normalImpactTime = 0.1
+    /// 必殺技で、攻撃の動きを流し始めてから相手に当たるまでの時間（秒）
+    static let specialImpactTime = 0.25
+    /// とどめが当たった瞬間に、2 体とも動きを止める時間（秒）（ヒットストップ）
+    static let hitStopDuration = 0.2
+    /// とどめを刺されて倒れる動きの速さ（スローモーション）
+    static let finishingDeathSpeed = 0.5
 
-    /// 攻撃を始めてから相手に当たるまでの時間（秒）。のけぞり、ダメージの数字、画面の光をこの分だけ遅らせる
+    /// 攻撃を始めてから相手に当たるまでの時間（秒）。のけぞり、ダメージの数字、光、音、振動をこの分だけ遅らせる
     /// 必殺技は溜めの動きの分だけ遅くなる。溜めの動きは、終わる少し前（混ぜて切り替える時間）から攻撃の動きに切り替わる
     var impactDelay: Double {
-        let chargeTime = isSpecial ? Self.specialCharge.duration - MonsterAnimation.transitionDuration : 0
-        return chargeTime + Self.attackImpactTime
+        isSpecial
+            ? Self.specialCharge.duration - MonsterAnimation.transitionDuration + Self.specialImpactTime
+            : Self.normalImpactTime
     }
 }
 
@@ -71,16 +81,19 @@ struct ComboComponent: View {
     }
 }
 
-/// 画面全体が一瞬光って消える（必殺技の演出）
+/// 画面全体が一瞬光って消える（必殺技ととどめの演出）
 /// delay 秒待ってから光る。必殺技の溜めの動きが終わって、攻撃が当たるタイミングに合わせる
+/// 視差効果を減らす設定のときは、弱く光る
 struct FlashComponent: View {
+    var color = Color.yellow
     var delay: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isLit = false
 
     var body: some View {
-        Color.yellow
+        color
             // isLit が変わったら、すぐに明るくなってから、ゆっくり消える
-            .phaseAnimator([0, 0.6], trigger: isLit) { content, opacity in
+            .phaseAnimator([0, reduceMotion ? 0.25 : 0.6], trigger: isLit) { content, opacity in
                 content.opacity(opacity)
             } animation: { opacity in
                 opacity > 0 ? .linear(duration: 0.05) : .easeOut(duration: 0.5)
@@ -91,5 +104,33 @@ struct FlashComponent: View {
                 try? await Task.sleep(for: .seconds(delay))
                 isLit = true
             }
+    }
+}
+
+/// 画面の縁が光る（フィーバー中は金色、相手の必殺技の予告では赤）
+/// pulses が true なら、明るくなったり暗くなったりをくり返す。視差効果を減らす設定のときは false にする
+struct EdgeGlowComponent: View {
+    let color: Color
+    let pulses: Bool
+    /// 1 回明るくなるのにかける時間（秒）
+    var pulseDuration = 0.5
+    @State private var isBright = false
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .strokeBorder(color, lineWidth: 28)
+                .blur(radius: 24)
+            Rectangle()
+                .strokeBorder(color.opacity(0.8), lineWidth: 4)
+                .blur(radius: 2)
+        }
+        .opacity(pulses ? (isBright ? 1 : 0.35) : 0.8)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .onAppear {
+            guard pulses else { return }
+            withAnimation(.easeInOut(duration: pulseDuration).repeatForever()) { isBright = true }
+        }
     }
 }

@@ -14,8 +14,17 @@ enum BattleEngine {
     /// 通常攻撃が当たるたびに溜まる必殺技ゲージ
     static let specialGaugeGain = 10
     static let specialAttackDamage = 50
+    /// フィーバーでない通常攻撃が当たるたびに溜まるフィーバーゲージ
+    /// ⚠️ 変えるときは supabase/schema.sql の check_battle_action も合わせる（満タンになるまでの回数を確かめている）
+    static let feverGaugeGain = 10
+    /// フィーバーが続く時間（秒）。時間は行動した端末で数える（BattleViewModel）
+    /// ⚠️ 変えるときは supabase/schema.sql の check_battle_action も合わせる
+    static let feverDuration: Double = 5
+    /// フィーバー中の通常攻撃のダメージの倍率
+    static let feverDamageMultiplier = 2
 
-    /// attacker が action を行う。当たれば与えたダメージを返し、決着後やゲージ不足で行えなければ nil を返す
+    /// attacker が action を行う。行えたら与えたダメージ（フィーバーを始めたときは 0）を返し、
+    /// 決着後やゲージ不足で行えなければ nil を返す
     static func apply(_ action: BattleAction, by attacker: FighterID, to state: inout BattleState) -> Int? {
         guard state.winner == nil,
               var me = state.fighters[attacker],
@@ -28,10 +37,19 @@ enum BattleEngine {
         case .normalAttack:
             damage = min(normalAttackDamage, target.hp)
             me.specialGauge = min(me.specialGauge + specialGaugeGain, Fighter.specialGaugeMax)
+            me.feverGauge = min(me.feverGauge + feverGaugeGain, Fighter.feverGaugeMax)
+        case .feverAttack:
+            // フィーバー中は、フィーバーゲージは溜まらない（続けてフィーバーできないようにする）
+            damage = min(normalAttackDamage * feverDamageMultiplier, target.hp)
+            me.specialGauge = min(me.specialGauge + specialGaugeGain, Fighter.specialGaugeMax)
         case .specialAttack:
             guard me.canUseSpecial else { return nil }
             damage = min(specialAttackDamage, target.hp)
             me.specialGauge = 0
+        case .fever:
+            guard me.canUseFever else { return nil }
+            damage = 0
+            me.feverGauge = 0
         }
 
         target.hp -= damage

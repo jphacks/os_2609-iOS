@@ -34,7 +34,28 @@ final class BattleViewModel {
         let damage: Int
         /// 必殺技による攻撃か（演出を派手にする）
         let isSpecial: Bool
+        /// フィーバー中の通常攻撃か（演出を派手にする）
+        let isFever: Bool
+        /// この攻撃で HP が 0 になったか（とどめの演出を出す）
+        /// この端末で計算した結果なので、勝敗が確定したわけではない（確定した勝敗は outcome）
+        let isFinishing: Bool
+
+        init(action: BattleAction, damage: Int, isFinishing: Bool) {
+            self.damage = damage
+            isSpecial = action == .specialAttack
+            isFever = action == .feverAttack
+            self.isFinishing = isFinishing
+        }
     }
+
+    /// 相手の必殺技の予告。相手の必殺技が届いてから、反映するまでの間だけある
+    struct Danger: Identifiable {
+        let id = UUID()
+    }
+
+    /// 相手の必殺技が届いてから反映するまでの時間（秒）。この間、画面に「DANGER!」を出す
+    /// 反映を遅らせるだけで、ダメージは変わらないので、相手の端末と HP は食い違わない
+    static let dangerDuration = 1.0
 
     /// 状態の中で自分と相手を見分ける ID。どちらの端末でも、自分が myID になる
     private static let myID: FighterID = "me"
@@ -56,6 +77,13 @@ final class BattleViewModel {
     private(set) var lastHitOnOpponent: Hit?
     /// 最後に自分へ当たった攻撃
     private(set) var lastHitOnMe: Hit?
+    /// 予告している相手の必殺技。予告していなければ nil
+    private(set) var incomingDanger: Danger?
+    /// 自分のフィーバーが終わる時刻。フィーバー中でなければ nil
+    /// 時刻で持つので、アプリがバックグラウンドにある間も時間は進む（戻ってきたときに残り時間が増えない）
+    private(set) var feverEndsAt: Date?
+    /// フィーバーを終わらせるタスク
+    private var feverTask: Task<Void, Never>?
     /// この時刻になるまで次の通常攻撃はできない（クールダウン）
     private var nextNormalAttackAt = ContinuousClock.now
 
@@ -72,6 +100,8 @@ final class BattleViewModel {
 
     var me: Fighter? { state?.fighters[Self.myID] }
     var opponent: Fighter? { state?.fighters[Self.opponentID] }
+    /// フィーバー中か。終わる時刻を過ぎていたら、終わらせるタスクがまだ動いていなくてもフィーバーではない
+    var isFeverActive: Bool { feverEndsAt.map { Date.now < $0 } ?? false }
 
     /// 「バトルする」が押されたときに呼ぶ。対戦相手を探し、誰も待っていなければ相手が来るまで待つ
     func findOpponent() {
@@ -116,7 +146,7 @@ final class BattleViewModel {
     func attack() {
         let now = ContinuousClock.now
         guard now >= nextNormalAttackAt else { return }
-        if perform(.normalAttack) {
+        if perform(isFeverActive ? .feverAttack : .normalAttack) {
             nextNormalAttackAt = now + .seconds(BattleEngine.normalAttackCooldown)
         }
     }
@@ -124,6 +154,22 @@ final class BattleViewModel {
     /// 必殺技ボタンが押されたときに呼ぶ。ゲージが満タンでなければ何も起きない
     func useSpecial() {
         perform(.specialAttack)
+    }
+
+    /// フィーバーボタンが押されたときに呼ぶ。ゲージが満タンでなければ何も起きない
+    /// feverDuration 秒の間、通常攻撃のダメージが 2 倍になる
+    func useFever() {
+        guard !isFeverActive, perform(.fever) else { return }
+        feverEndsAt = .now + BattleEngine.feverDuration
+        feverTask?.cancel()
+        feverTask = Task {
+            do {
+                try await Task.sleep(for: .seconds(BattleEngine.feverDuration))
+            } catch {
+                return // 対戦が終わった
+            }
+            feverEndsAt = nil
+        }
     }
 
     /// 結果を見終わったときに呼ぶ。ロビーに戻る。次の対戦では別のモンスターを使う
@@ -139,12 +185,14 @@ final class BattleViewModel {
         receiveTask?.cancel()
         finishTask?.cancel()
         finishTask = nil
+        endFever()
         leaveTask = Task { await service.leave() }
         state = nil
         opponentMonster = nil
         outcome = nil
         lastHitOnOpponent = nil
         lastHitOnMe = nil
+        incomingDanger = nil
         phase = .lobby
     }
 
@@ -164,11 +212,20 @@ final class BattleViewModel {
         receiveTask = Task {
             do {
                 for try await action in service.opponentActions() {
+                    // 相手の必殺技は、予告してから反映する
+                    // 予告している間に届いた相手の行動は、そのあとに順番に反映する
+                    if action == .specialAttack, opponent?.canUseSpecial == true {
+                        incomingDanger = Danger()
+                        try await Task.sleep(for: .seconds(Self.dangerDuration))
+                        incomingDanger = nil
+                    }
                     guard var state,
                           let damage = BattleEngine.apply(action, by: Self.opponentID, to: &state)
                     else { continue }
                     self.state = state
-                    lastHitOnMe = Hit(damage: damage, isSpecial: action == .specialAttack)
+                    if action.isAttack {
+                        lastHitOnMe = Hit(action: action, damage: damage, isFinishing: state.winner != nil)
+                    }
                     if state.winner != nil { break }
                 }
                 // 自分の端末で決着がついた、または相手の端末で決着がついて受け取りが終わった
@@ -189,7 +246,9 @@ final class BattleViewModel {
               let damage = BattleEngine.apply(action, by: Self.myID, to: &state)
         else { return false }
         self.state = state
-        lastHitOnOpponent = Hit(damage: damage, isSpecial: action == .specialAttack)
+        if action.isAttack {
+            lastHitOnOpponent = Hit(action: action, damage: damage, isFinishing: state.winner != nil)
+        }
         service.send(action)
         if state.winner != nil {
             confirmOutcome()
@@ -201,6 +260,8 @@ final class BattleViewModel {
     private func confirmOutcome() {
         guard finishTask == nil else { return }
         receiveTask?.cancel()
+        incomingDanger = nil
+        endFever()
         let iWon = state?.winner == Self.myID
         finishTask = Task {
             do {
@@ -212,6 +273,12 @@ final class BattleViewModel {
                 fail(error)
             }
         }
+    }
+
+    private func endFever() {
+        feverTask?.cancel()
+        feverTask = nil
+        feverEndsAt = nil
     }
 
     /// 相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る

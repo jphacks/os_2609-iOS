@@ -17,6 +17,9 @@ struct BattleArenaComponent: View {
     let opponentAnimation: MonsterAnimationRequest?
     let hitOnOpponent: BattleViewModel.Hit?
     let hitOnMe: BattleViewModel.Hit?
+    let danger: BattleViewModel.Danger?
+    let isFeverActive: Bool
+    let isVictory: Bool
     /// 画面が表示されているか。表示されている間だけ ARView を置く
     let isVisible: Bool
     /// 床にモンスターを置き終わったか。置くまでは「床を映して」と案内する
@@ -47,6 +50,9 @@ struct BattleArenaComponent: View {
                             opponentAnimation: opponentAnimation,
                             hitOnOpponent: hitOnOpponent,
                             hitOnMe: hitOnMe,
+                            danger: danger,
+                            isFeverActive: isFeverActive,
+                            isVictory: isVictory,
                             onPlaced: { isPlaced = true }
                         )
                     }
