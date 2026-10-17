@@ -8,12 +8,27 @@ import Observation
 /// AR 捕獲画面の状態。ARView には触らず、状態だけを持つ
 @Observable
 final class ARCaptureViewModel {
+    /// バトルの結果として出す、捕獲の結果
+    enum CaptureOutcome {
+        case success(Monster)
+        case failure(Monster)
+    }
+
+    /// 捕獲の結果を出しておく時間。過ぎたら次へ進む
+    private static let outcomeDisplayDuration = Duration.seconds(2)
+
     /// AR に出しているモンスター。タップして消したら nil
     /// ARSceneController はこれが変わるたびに、AR のモンスターを消したり置き直したりする
     private(set) var encounter: Encounter? = .random()
 
     /// モンスターが床に配置されたか。変更は下のメソッド経由でのみ行う
     private(set) var isMonsterPlaced = false
+
+    /// 画面に出している捕獲の結果。出していなければ nil
+    private(set) var captureOutcome: CaptureOutcome?
+
+    /// 捕獲の結果を出してから次へ進むまで待つタスク
+    private var outcomeTask: Task<Void, Never>?
 
     /// 画面の上に出す案内。モンスターを出していないときは nil
     var statusMessage: String? {
@@ -31,7 +46,32 @@ final class ARCaptureViewModel {
     /// AR のモンスターがタップされたときに ARSceneController から呼ばれる
     /// タップした時点でモンスターは AR から消す
     func monsterTapped() {
-        guard encounter != nil else { return }
+        guard let tapped = encounter else { return }
         encounter = nil
+        // 【仮】バトル画面ができるまでは、タップしたら勝ったことにする
+        // バトル画面ができたら、ここでバトルを始め、終わったときにバトル側から finishBattle を呼んでもらう
+        finishBattle(won: true, opponentModelName: tapped.monster.modelName)
+    }
+
+    /// バトルが終わったときに呼ぶ。勝ったら捕獲成功、負けたら捕獲失敗を出し、少し待ってから次へ進む
+    /// - Parameters:
+    ///   - won: 自分が勝ったか
+    ///   - opponentModelName: 戦った相手のモンスターの `modelName`
+    func finishBattle(won: Bool, opponentModelName: String) {
+        // 一覧にないモンスターは結果を出せないので、次のモンスターを出すだけにする
+        guard let opponent = Monster.named(opponentModelName) else {
+            encounter = .random()
+            return
+        }
+        captureOutcome = won ? .success(opponent) : .failure(opponent)
+
+        outcomeTask?.cancel()
+        outcomeTask = Task {
+            try? await Task.sleep(for: Self.outcomeDisplayDuration)
+            guard !Task.isCancelled else { return }
+            captureOutcome = nil
+            // 【仮】詳細画面ができるまでは、捕獲成功でもそのまま次のモンスターを出す
+            encounter = .random()
+        }
     }
 }

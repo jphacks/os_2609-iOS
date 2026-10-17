@@ -35,6 +35,13 @@ struct ARCaptureView: View {
                         .padding(.top, 8)
                 }
             }
+            .overlay {
+                if let outcome = viewModel.captureOutcome {
+                    CaptureResultComponent(outcome: outcome)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.spring, value: viewModel.captureOutcome != nil)
             .overlay(alignment: .bottom) {
                 LocationStatusComponent(viewModel: locationViewModel)
                     .padding(.bottom, 8)
