@@ -16,12 +16,16 @@ struct BattleView: View {
     /// 自分と相手のモンスターに流すアニメーション。どれを流すかは見た目の話なので、この画面で決める
     @State private var myAnimation: MonsterAnimationRequest?
     @State private var opponentAnimation: MonsterAnimationRequest?
+    /// 続けて当てた回数。前に当ててから comboTimeout 秒以内に次を当てると増える
+    @State private var comboCount = 0
     /// この画面が表示されているか
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
 
     /// 決着してから、勝った側が喜び始めるまでの時間（秒）。最後の攻撃の動きを見せてから喜ぶ
     private static let celebrationDelay = 1.0
+    /// この時間（秒）次の攻撃を当てなかったら、続けて当てた回数を 0 に戻す
+    private static let comboTimeout = 1.2
 
     init(locationViewModel: LocationViewModel, service: any BattleService) {
         self.locationViewModel = locationViewModel
@@ -59,8 +63,9 @@ struct BattleView: View {
                 .padding(12)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
 
-            // 2. 中央：空けておき、後ろの AR の床の上で戦うモンスターを見せる
-            Spacer()
+            // 2. 中央：後ろの AR の床の上で戦うモンスターが見えるように空けておく。右上に、続けて当てた回数を出す
+            ComboComponent(count: comboCount)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
 
             // 3. 下部：自分の HP と必殺技ゲージ
             VStack(spacing: 8) {
@@ -140,6 +145,16 @@ struct BattleView: View {
             guard let hit = viewModel.lastHitOnOpponent, let opponent = viewModel.opponent else { return }
             myAnimation = attackAnimation(of: viewModel.myMonster, hit: hit)
             opponentAnimation = reactionAnimation(hp: opponent.hp, hit: hit)
+            comboCount += 1
+        }
+        // 当てるたびに待ち直し、次を当てないまま時間が過ぎたら、続けて当てた回数を 0 に戻す
+        .task(id: viewModel.lastHitOnOpponent?.id) {
+            do {
+                try await Task.sleep(for: .seconds(Self.comboTimeout))
+            } catch {
+                return // 次の攻撃が当たった
+            }
+            comboCount = 0
         }
         .onChange(of: viewModel.lastHitOnMe?.id) {
             guard let hit = viewModel.lastHitOnMe, let me = viewModel.me else { return }
@@ -166,6 +181,7 @@ struct BattleView: View {
         .onDisappear {
             myAnimation = nil
             opponentAnimation = nil
+            comboCount = 0
         }
     }
 

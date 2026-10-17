@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-/// バトル画面の演出（揺れ、踏み込み、タップの波紋、画面の光）と、演出のタイミング
+/// バトル画面の演出（揺れ、踏み込み、タップの波紋、画面の光、続けて当てた回数）と、演出のタイミング
 /// ダメージの数字は AR の中に出す（BattleARSceneController）
 
 extension BattleViewModel.Hit {
@@ -55,6 +55,28 @@ struct TapRippleComponent: View {
             .onAppear {
                 withAnimation(.easeOut(duration: 0.4)) { isExpanded = true }
             }
+    }
+}
+
+/// 続けて当てた回数（「5 HIT!」）。2 回目から出し、回数が増えるほど文字が大きく、10 回からは赤くなる
+/// 回数が増えるたびに、一瞬大きくなって弾む
+struct ComboComponent: View {
+    let count: Int
+
+    var body: some View {
+        if count >= 2 {
+            Text("\(count) HIT!")
+                .font(.system(size: 28 + CGFloat(min(count, 20)), weight: .heavy, design: .rounded))
+                .foregroundStyle(count >= 10 ? .red : .orange)
+                .shadow(radius: 2)
+                // 画面の右端に置くので、右端を基準に大きくする（真ん中を基準にすると、はみ出す）
+                .phaseAnimator([1, 1.3], trigger: count) { content, scale in
+                    content.scaleEffect(scale, anchor: .trailing)
+                } animation: { _ in
+                    .spring(duration: 0.15)
+                }
+                .allowsHitTesting(false)
+        }
     }
 }
 
