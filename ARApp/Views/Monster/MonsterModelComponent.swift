@@ -7,14 +7,20 @@ import SwiftUI
 import SceneKit
 
 /// モンスターの 3D モデルを、カメラ映像なしで表示する。指で左右にドラッグするとモデルが回る
-/// 3D を扱うので AR/ に置いている
+/// 捕獲画面の詳細画面と、バトル画面の対戦前の画面で使う。アニメーションはせず、立っている姿勢で止めて表示する
 ///
 /// RealityKit（RealityView や ARView）ではなく SceneKit で表示する
-/// 捕獲画面の ARView が動いている間に RealityKit の画面をもう 1 つ出すと、捕獲画面の AR が壊れる
-/// （RealityView：床に置けなくなる・タブで戻ると真っ暗になる、ARView：置いたモンスターが描かれなくなる）
-/// SceneKit は RealityKit とは別の仕組みで描くので、捕獲画面に影響しない
+/// ARView が動いている間や、ARView を作る直前に RealityKit の画面をもう 1 つ出すと、AR が壊れる
+/// （RealityView：床に置けなくなる・タブで戻ると真っ暗になる・次に作った ARView がカメラの映像を描かず真っ黒になる、
+///   ARView：置いたモンスターが描かれなくなる）
+/// SceneKit は RealityKit とは別の仕組みで描くので、AR に影響しない
 struct MonsterModelComponent: View {
     let monster: Monster
+    /// モデルの高さ（m）。省略すると monster.size（現実の大きさ）になり、モンスターどうしの大きさの違いがわかる
+    /// 一番大きいモンスター（1.8m）がちょうど収まる距離から見ているので、どれも大きく見せたいときは 2.4 くらいにする
+    var height: Float? = nil
+    /// 最初の向き。0 で正面（カメラの方）、正の値でカメラから見て右を向く
+    var facing: Angle = .zero
 
     /// 指で回した角度（縦の軸まわり）
     @State private var angle = Angle.zero
@@ -25,7 +31,7 @@ struct MonsterModelComponent: View {
     private static let degreesPerPoint = 0.5
 
     var body: some View {
-        MonsterModelSceneView(monster: monster, angle: angle)
+        MonsterModelSceneView(monster: monster, height: height ?? monster.size, angle: facing + angle)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture()
@@ -42,6 +48,7 @@ struct MonsterModelComponent: View {
 /// SceneKit の SCNView を SwiftUI で使うためのラッパー。モデルを 1 体だけ、回す台に乗せて表示する
 private struct MonsterModelSceneView: UIViewRepresentable {
     let monster: Monster
+    let height: Float
     let angle: Angle
 
     /// 立っている姿勢として止めておく時刻（秒）。USDZ のアニメーションの Idle の区間（MonsterAnimation を参照）の中ほど
@@ -55,14 +62,15 @@ private struct MonsterModelSceneView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView()
-        view.backgroundColor = .systemBackground
+        // 背景は置く場所の色に任せる（詳細画面は白や黒、対戦前の画面は濃い紺）
+        view.backgroundColor = .clear
         view.autoenablesDefaultLighting = true
         view.isPlaying = true
 
         let scene = SCNScene()
         view.scene = scene
         scene.rootNode.addChildNode(context.coordinator.turntable)
-        if let model = Self.loadModel(of: monster) {
+        if let model = Self.loadModel(of: monster, height: height) {
             context.coordinator.turntable.addChildNode(model)
         }
 
@@ -86,8 +94,8 @@ private struct MonsterModelSceneView: UIViewRepresentable {
         let turntable = SCNNode()
     }
 
-    /// USDZ を読み込み、高さが monster.size になるように縮め、体の真ん中が原点に来るように置く
-    private static func loadModel(of monster: Monster) -> SCNNode? {
+    /// USDZ を読み込み、高さが height になるように縮め、体の真ん中が原点に来るように置く
+    private static func loadModel(of monster: Monster, height targetHeight: Float) -> SCNNode? {
         guard let url = Bundle.main.url(forResource: monster.modelName, withExtension: "usdz"),
               let scene = try? SCNScene(url: url) else {
             // 【開発用】原因を調べるためのログ。リリースするときに消してよい
@@ -98,14 +106,14 @@ private struct MonsterModelSceneView: UIViewRepresentable {
         let model = SCNNode()
         scene.rootNode.childNodes.forEach(model.addChildNode)
 
-        // モデルは 3〜4m の大きさで作られているので、高さが size になるように縮小する（MonsterEntity と同じ）
+        // モデルは 3〜4m の大きさで作られているので、指定の高さになるように縮小する（MonsterEntity と同じ）
         let (minBounds, maxBounds) = model.boundingBox
         let height = maxBounds.y - minBounds.y
-        let scale = height > 0 ? monster.size / height : 1
+        let scale = height > 0 ? targetHeight / height : 1
         model.scale = SCNVector3(scale, scale, scale)
         model.position = SCNVector3(
             -(minBounds.x + maxBounds.x) / 2 * scale,
-            -minBounds.y * scale - monster.size / 2,
+            -minBounds.y * scale - targetHeight / 2,
             -(minBounds.z + maxBounds.z) / 2 * scale
         )
 

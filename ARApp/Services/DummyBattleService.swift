@@ -12,11 +12,17 @@ import Foundation
 
 /// 【開発用】Supabase がなくても対戦を試せるダミー実装
 /// すぐに相手が見つかり、相手（CPU）は一定の間隔で通常攻撃してくる。必殺技ゲージが溜まったら必殺技を撃つ
+/// こちらの必殺技は、ときどきよける
 final class DummyBattleService: BattleService {
     /// CPU が攻撃する間隔（秒）
     private static let attackInterval: Double = 1
+    /// CPU がこちらの必殺技をよける確率
+    private static let dodgeChance = 0.3
     /// 必殺技ゲージが満タンになるまでの通常攻撃の回数
     private static let attacksBeforeSpecial = Fighter.specialGaugeMax / BattleEngine.specialGaugeGain
+
+    /// CPU の行動を流す先。こちらの必殺技に、受けたかよけたかを返すのに使う
+    private var continuation: AsyncThrowingStream<BattleAction, Error>.Continuation?
 
     func findOpponent(monster: Monster) async throws -> Monster {
         try await Task.sleep(for: .seconds(1.5))
@@ -25,6 +31,7 @@ final class DummyBattleService: BattleService {
 
     func opponentActions() -> AsyncThrowingStream<BattleAction, Error> {
         AsyncThrowingStream { continuation in
+            self.continuation = continuation
             let task = Task {
                 var attackCount = 0
                 while true {
@@ -49,7 +56,12 @@ final class DummyBattleService: BattleService {
     }
 
     func send(_ action: BattleAction) {
-        // CPU はこちらの行動を受け取る必要がない
+        // CPU が気にするのは必殺技だけ。本物の相手と同じく、予告の時間がたってから結果を返す
+        guard action == .specialAttack else { return }
+        Task {
+            try? await Task.sleep(for: .seconds(BattleViewModel.dangerDuration))
+            continuation?.yield(Double.random(in: 0..<1) < Self.dodgeChance ? .dodgeSpecial : .takeSpecial)
+        }
     }
 
     func finish(iWon: Bool) async throws -> Bool {

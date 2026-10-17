@@ -18,6 +18,7 @@ struct BattleArenaComponent: View {
     let hitOnOpponent: BattleViewModel.Hit?
     let hitOnMe: BattleViewModel.Hit?
     let danger: BattleViewModel.Danger?
+    let myDodge: BattleViewModel.Dodge?
     let isFeverActive: Bool
     let isVictory: Bool
     /// 画面が表示されているか。表示されている間だけ ARView を置く
@@ -51,6 +52,7 @@ struct BattleArenaComponent: View {
                             hitOnOpponent: hitOnOpponent,
                             hitOnMe: hitOnMe,
                             danger: danger,
+                            myDodge: myDodge,
                             isFeverActive: isFeverActive,
                             isVictory: isVictory,
                             onPlaced: { isPlaced = true }
