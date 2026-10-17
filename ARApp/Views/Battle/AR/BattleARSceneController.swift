@@ -49,6 +49,9 @@ final class BattleARSceneController {
     /// 最後に受け取ったアニメーションと攻撃の id。変わったときだけ流す
     private var myAnimationID: UUID?
     private var opponentAnimationID: UUID?
+    /// 最後に受け取ったアニメーション。モンスターを置く前に届いた分も、ここに残しておく
+    private var myAnimation: MonsterAnimationRequest?
+    private var opponentAnimation: MonsterAnimationRequest?
     private var hitOnOpponentID: UUID?
     private var hitOnMeID: UUID?
     /// 立っている間にくり返すアニメーション。置く前に受け取った分は、置いたときに流す
@@ -102,10 +105,12 @@ final class BattleARSceneController {
         }
         if let myAnimation, myAnimation.id != myAnimationID {
             myAnimationID = myAnimation.id
+            self.myAnimation = myAnimation
             myEntity?.monsterAnimator?.play(myAnimation)
         }
         if let opponentAnimation, opponentAnimation.id != opponentAnimationID {
             opponentAnimationID = opponentAnimation.id
+            self.opponentAnimation = opponentAnimation
             opponentEntity?.monsterAnimator?.play(opponentAnimation)
         }
         if let hitOnOpponent, hitOnOpponent.id != hitOnOpponentID {
@@ -162,6 +167,14 @@ final class BattleARSceneController {
         opponentHome = opponent.transform
         me.monsterAnimator?.changeLoop(to: myIdle)
         opponent.monsterAnimator?.changeLoop(to: opponentIdle)
+        // 置く前に、最後に残る動き（倒れたまま、喜び続ける）が届いていたら流す
+        // 床が見つかる前に決着したときや、対戦中にタブを切り替えて戻ってきたときに、立った姿にならないようにする
+        // のけぞりなど 1 回で終わる動きは、もう終わっているはずなので流さない
+        for (entity, animation) in [(me, myAnimation), (opponent, opponentAnimation)] {
+            guard var animation, animation.ending != .backToLoop else { continue }
+            animation.delay = 0
+            entity.monsterAnimator?.play(animation)
+        }
         onPlaced()
     }
 
