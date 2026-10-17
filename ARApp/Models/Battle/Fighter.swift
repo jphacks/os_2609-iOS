@@ -1,13 +1,13 @@
 //
-//  RealtimeFighter.swift
+//  Fighter.swift
 //  ARApp
 //
 
-/// バトルに参加する人（ローカルでは敵 AI も含む）を区別する ID。オンラインではユーザー ID などを入れる想定
+/// バトルの状態の中で、戦う人を見分ける ID
 typealias FighterID = String
 
-/// リアルタイムバトルで戦う 1 人ぶんの状態。自分も相手も同じ形で持つ
-struct RealtimeFighter: Codable, Equatable {
+/// バトルで戦う 1 人ぶんの状態。自分も相手も同じ形で持つ
+struct Fighter: Equatable {
     static let specialGaugeMax = 100
 
     let id: FighterID
@@ -25,5 +25,5 @@ struct RealtimeFighter: Codable, Equatable {
     }
 
     /// ゲージが満タンなら必殺技を使える
-    var canUseSpecial: Bool { specialGauge >= RealtimeFighter.specialGaugeMax }
+    var canUseSpecial: Bool { specialGauge >= Fighter.specialGaugeMax }
 }

@@ -23,9 +23,6 @@ struct ContentView: View {
             Tab("バトル", systemImage: "bolt.fill") {
                 BattleView(locationViewModel: locationViewModel, service: battleService)
             }
-            Tab("リアルタイム", systemImage: "hand.tap.fill") {
-                RealtimeBattleView()
-            }
         }
         .onAppear { locationViewModel.start() }
         .onDisappear { locationViewModel.stop() }

@@ -1,11 +1,13 @@
 //
-//  RealtimeBattleEngine.swift
+//  BattleEngine.swift
 //  ARApp
 //
 
-/// リアルタイムバトルのルール（攻撃・ダメージ・勝敗）。状態を受け取って書き換えるだけで、タイマーや画面、通信は持たない
+/// バトルのルール（攻撃・ダメージ・勝敗）。状態を受け取って書き換えるだけで、タイマーや画面、通信は持たない
 /// 自分の行動も相手の行動も同じ apply を通すので、どちらの端末で計算しても同じ結果になる
-enum RealtimeBattleEngine {
+enum BattleEngine {
+    /// 2 人とも同じ HP で始める
+    static let maxHP = 300
     static let normalAttackDamage = 10
     /// 通常攻撃のクールダウン（秒）。連打の制限は入力した端末で行うので、状態には持たない
     static let normalAttackCooldown: Double = 0.3
@@ -14,7 +16,7 @@ enum RealtimeBattleEngine {
     static let specialAttackDamage = 50
 
     /// attacker が action を行う。当たれば与えたダメージを返し、決着後やゲージ不足で行えなければ nil を返す
-    static func apply(_ action: BattleAction, by attacker: FighterID, to state: inout RealtimeBattleState) -> Int? {
+    static func apply(_ action: BattleAction, by attacker: FighterID, to state: inout BattleState) -> Int? {
         guard state.winner == nil,
               var me = state.fighters[attacker],
               let targetID = state.opponentID(of: attacker),
@@ -25,7 +27,7 @@ enum RealtimeBattleEngine {
         switch action {
         case .normalAttack:
             damage = min(normalAttackDamage, target.hp)
-            me.specialGauge = min(me.specialGauge + specialGaugeGain, RealtimeFighter.specialGaugeMax)
+            me.specialGauge = min(me.specialGauge + specialGaugeGain, Fighter.specialGaugeMax)
         case .specialAttack:
             guard me.canUseSpecial else { return nil }
             damage = min(specialAttackDamage, target.hp)
