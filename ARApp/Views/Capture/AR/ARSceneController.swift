@@ -15,11 +15,12 @@ final class ARSceneController: NSObject {
     /// アンカーは最初に見つかった床（自分の近く）なので、少し歩かないと届かない距離にする
     static let spawnDistanceRange: ClosedRange<Float> = 1.5...4
     /// 出現した場所を中心に歩き回る範囲の半径（m）
-    static let wanderRadius: Float = 0.6
+    static let wanderRadius: Float = 1.5
     /// 1 回に歩く距離（m）
-    static let stepRange: ClosedRange<Float> = 0.2...0.5
-    /// 歩く速さ（m/秒）
-    static let walkSpeed: Float = 0.15
+    static let stepRange: ClosedRange<Float> = 0.6...1.4
+    /// 歩く速さ。モンスターの高さ 1m あたりの速さ（m/秒）
+    /// 大きいモンスターほど歩幅が広いので、同じ歩くアニメーションでも速く進ませる（高さ 1.5m なら 0.6m/秒）
+    static let walkSpeedPerHeight: Float = 0.4
     /// 向きを変えるのにかける時間（秒）
     static let turnDuration: TimeInterval = 0.4
     /// 歩き終わってから次に歩き出すまで止まっている時間（秒）
@@ -104,7 +105,7 @@ final class ARSceneController: NSObject {
             self.entities[wild.id] = entity
             self.viewModel.monsterPlaced(id: wild.id)
 
-            await self.walkAround(entity, home: home)
+            await self.walkAround(entity, home: home, speed: Self.walkSpeedPerHeight * wild.monster.size)
         }
     }
 
@@ -126,8 +127,9 @@ final class ARSceneController: NSObject {
     }
 
     /// 「向きを変える → 歩く → 少し止まる」を、タスクが止められるまで繰り返す
-    /// home は出現した場所。その周りだけを歩く
-    private func walkAround(_ entity: Entity, home: SIMD2<Float>) async {
+    /// home は出現した場所。その周りだけを歩く。speed は歩く速さ（m/秒）
+    /// 歩いている間は歩くアニメーション、止まっている間は立っているアニメーションを流す
+    private func walkAround(_ entity: Entity, home: SIMD2<Float>, speed: Float) async {
         while !Task.isCancelled {
             let current = SIMD2(entity.position.x, entity.position.z)
             let target = Self.nextTarget(from: current, home: home)
@@ -141,11 +143,13 @@ final class ARSceneController: NSObject {
             try? await Task.sleep(for: .seconds(Self.turnDuration))
             guard !Task.isCancelled else { return }
 
-            let walkDuration = TimeInterval(simd_length(direction) / Self.walkSpeed)
+            let walkDuration = TimeInterval(simd_length(direction) / speed)
             transform.translation = [target.x, transform.translation.y, target.y]
+            entity.monsterAnimator?.loop(.walk)
             entity.move(to: transform, relativeTo: entity.parent, duration: walkDuration, timingFunction: .linear)
             try? await Task.sleep(for: .seconds(walkDuration))
             guard !Task.isCancelled else { return }
+            entity.monsterAnimator?.loop(.idle)
 
             try? await Task.sleep(for: .seconds(Double.random(in: Self.restRange)))
         }
