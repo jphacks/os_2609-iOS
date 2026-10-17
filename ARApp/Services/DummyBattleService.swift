@@ -5,7 +5,7 @@
 //  ⚠️⚠️⚠️ 開発用のコード ⚠️⚠️⚠️
 //  Supabase がないとき（接続先の plist がない・プレビュー）に、本物の対戦相手の代わりに使う。
 //  本番では使わないが、プレビューと鍵を持っていないメンバーの環境で対戦画面が動かなくなるので削除しない。
-//  使っている場所：ContentView の makeBattleService()（plist がないとき）と「CPU戦」のタブ、BattleView の #Preview
+//  使っている場所：ContentView の makeBattleService()（plist がないとき）と、BattleView の #Preview
 //
 
 import Foundation

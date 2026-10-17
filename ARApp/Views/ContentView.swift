@@ -4,10 +4,6 @@
 //
 //  Created by Sakurai Erika on 2026/10/08.
 //
-//  ⚠️⚠️⚠️ 開発用のコードを含む ⚠️⚠️⚠️
-//  「CPU戦」のタブは、ひとりで AR のバトルを試すためのもの。リリースするときはタブごと消す。
-//  makeBattleService() と makeWildMonsterService() のダミーの使い分けも開発用（それぞれのコメントを参照）。
-//
 
 import SwiftUI
 
@@ -28,10 +24,6 @@ struct ContentView: View {
             }
             Tab("バトル", systemImage: "bolt.fill") {
                 BattleView(service: battleService)
-            }
-            // 【開発用】Supabase の設定に関係なく、いつも CPU が相手になるバトル。実機なら AR で戦える
-            Tab("CPU戦", systemImage: "ladybug.fill") {
-                BattleView(service: DummyBattleService())
             }
         }
         .onAppear {
