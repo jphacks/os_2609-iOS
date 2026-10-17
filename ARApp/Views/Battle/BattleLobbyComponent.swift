@@ -22,7 +22,8 @@ struct BattleLobbyComponent: View {
             Text("MONSTER BATTLE")
                 .font(.headline)
 
-            FighterImageComponent(systemName: "shield.lefthalf.filled", color: .blue, size: 90)
+            BattleMonsterComponent(monster: myMonster, animation: nil, facing: 0.4)
+                .frame(width: 240, height: 240)
             Text(myMonster.name)
                 .font(.title3.bold())
 

@@ -35,15 +35,17 @@ struct BattleMonsterComponent: View {
             content.add(model)
 
             // カメラ映像がないので、部屋の光の代わりに前・横・後ろから照らす
-            for (position, intensity) in [(SIMD3<Float>(1.5, 2, 2), Float(3000)), ([-2, 1, 1.5], 1500), ([0, 2, -2], 1000)] {
+            // 自分のモンスターは後ろ姿を見せるので、後ろからも前と同じくらい明るくする
+            for (position, intensity) in [(SIMD3<Float>(1.5, 2, 2), Float(3000)), ([-2, 1, 1.5], 1500), ([0, 2, -2], 2500)] {
                 let light = DirectionalLight()
                 light.light.intensity = intensity
                 light.look(at: [0, 0.5, 0], from: position, relativeTo: nil)
                 content.add(light)
             }
 
+            // 跳んだり武器を振ったりしてもはみ出さない範囲で、なるべく大きく映す
             let camera = PerspectiveCamera()
-            camera.look(at: [0, 0.45, 0], from: [0, 0.6, 1.8], relativeTo: nil)
+            camera.look(at: [0, 0.5, 0], from: [0, 0.65, 1.45], relativeTo: nil)
             content.add(camera)
 
             self.model = model

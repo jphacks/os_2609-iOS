@@ -19,8 +19,8 @@ struct BattleView: View {
     }
 
     var body: some View {
-        if let me = viewModel.me, let opponent = viewModel.opponent {
-            fightScreen(me: me, opponent: opponent)
+        if let me = viewModel.me, let opponent = viewModel.opponent, let opponentMonster = viewModel.opponentMonster {
+            fightScreen(me: me, opponent: opponent, opponentMonster: opponentMonster)
         } else {
             BattleLobbyComponent(
                 myMonster: viewModel.myMonster,
@@ -35,13 +35,14 @@ struct BattleView: View {
         }
     }
 
-    private func fightScreen(me: Fighter, opponent: Fighter) -> some View {
+    private func fightScreen(me: Fighter, opponent: Fighter, opponentMonster: Monster) -> some View {
         VStack(spacing: 16) {
             // 1. 上部：相手の名前と HP
             StatBarComponent(title: opponent.name, value: opponent.hp, maxValue: opponent.maxHP, color: .red)
 
-            // 2. 中央上：相手のモンスター
-            FighterImageComponent(systemName: "flame.fill", color: .orange, size: 120)
+            // 2. 中央上：相手のモンスター。こちらを向いて、左下の自分のモンスターの方を見る
+            BattleMonsterComponent(monster: opponentMonster, animation: nil, facing: -0.5)
+                .frame(width: 260, height: 260)
                 .overlay {
                     if let hit = viewModel.lastHitOnOpponent {
                         FloatingDamageComponent(
@@ -62,8 +63,9 @@ struct BattleView: View {
 
             Spacer(minLength: 0)
 
-            // 3. 中央下：自分のモンスター
-            FighterImageComponent(systemName: "shield.lefthalf.filled", color: .blue, size: 90)
+            // 3. 中央下：自分のモンスター。後ろ姿で、右上の相手の方を向く
+            BattleMonsterComponent(monster: viewModel.myMonster, animation: nil, facing: .pi - 0.5)
+                .frame(width: 250, height: 250)
                 .overlay {
                     if let hit = viewModel.lastHitOnMe {
                         FloatingDamageComponent(text: "-\(hit.damage)", color: .purple, fontSize: hit.isSpecial ? 64 : 36)
