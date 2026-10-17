@@ -22,9 +22,9 @@ final class ARSceneController {
     func placeMonster(in arView: ARView) {
         // モデルの読み込みは時間がかかるので、読み込み終わってからアンカーごとシーンに置く
         // 先にアンカーを置くと、モデルが出る前に「現れた！」と表示されてしまう
-        let monster = viewModel.monster
+        // 【開発用】全モンスターを並べて見比べる。戻すときは MonsterLineupEntity.swift の先頭のコメントを見る
         loadTask = Task {
-            let entity = await MonsterEntity.make(from: monster)
+            let entity = await MonsterLineupEntity.make()
             guard !Task.isCancelled else { return }
 
             // 20cm 四方以上の水平面が見つかったら、そこに自動で固定されるアンカー
