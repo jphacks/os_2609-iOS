@@ -18,22 +18,22 @@ struct Monster {
 extension Monster {
     /// 出現するモンスターの一覧。モデルは Resources/Models にある
     static let all = [
-        Monster(name: "エイリアン", modelName: "monster-alien", size: 0.5),
-        Monster(name: "バード", modelName: "monster-birb", size: 0.35),
-        Monster(name: "ブルーデーモン", modelName: "monster-blue-demon", size: 0.7),
-        Monster(name: "バニー", modelName: "monster-bunny", size: 0.35),
-        Monster(name: "カクトロ", modelName: "monster-cactoro", size: 0.5),
-        Monster(name: "デーモン", modelName: "monster-demon", size: 0.8),
-        Monster(name: "ディノ", modelName: "monster-dino", size: 0.6),
-        Monster(name: "フィッシュ", modelName: "monster-fish", size: 0.4),
-        Monster(name: "フロッグ", modelName: "monster-frog", size: 0.3),
-        Monster(name: "モンクルース", modelName: "monster-monkroose", size: 0.45),
-        Monster(name: "キノコキング", modelName: "monster-mushroom-king", size: 0.7),
-        Monster(name: "ニンジャ", modelName: "monster-ninja", size: 0.5),
-        Monster(name: "オーク", modelName: "monster-orc", size: 0.65),
-        Monster(name: "スカルオーク", modelName: "monster-orc-skull", size: 0.7),
-        Monster(name: "トライバル", modelName: "monster-tribal", size: 0.55),
-        Monster(name: "イエティ", modelName: "monster-yeti", size: 0.9),
+        Monster(name: "エイリアン", modelName: "monster-alien", size: 1.0),
+        Monster(name: "バード", modelName: "monster-birb", size: 0.7),
+        Monster(name: "ブルーデーモン", modelName: "monster-blue-demon", size: 1.4),
+        Monster(name: "バニー", modelName: "monster-bunny", size: 0.7),
+        Monster(name: "カクトロ", modelName: "monster-cactoro", size: 1.0),
+        Monster(name: "デーモン", modelName: "monster-demon", size: 1.6),
+        Monster(name: "ディノ", modelName: "monster-dino", size: 1.2),
+        Monster(name: "フィッシュ", modelName: "monster-fish", size: 0.8),
+        Monster(name: "フロッグ", modelName: "monster-frog", size: 0.6),
+        Monster(name: "モンクルース", modelName: "monster-monkroose", size: 0.9),
+        Monster(name: "キノコキング", modelName: "monster-mushroom-king", size: 1.4),
+        Monster(name: "ニンジャ", modelName: "monster-ninja", size: 1.0),
+        Monster(name: "オーク", modelName: "monster-orc", size: 1.3),
+        Monster(name: "スカルオーク", modelName: "monster-orc-skull", size: 1.4),
+        Monster(name: "トライバル", modelName: "monster-tribal", size: 1.1),
+        Monster(name: "イエティ", modelName: "monster-yeti", size: 1.8),
     ]
 }
 
