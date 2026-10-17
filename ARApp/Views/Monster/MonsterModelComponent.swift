@@ -7,7 +7,7 @@ import SwiftUI
 import SceneKit
 
 /// モンスターの 3D モデルを、カメラ映像なしで表示する。指で左右にドラッグするとモデルが回る
-/// 3D を扱うので AR/ に置いている
+/// 捕獲したモンスターの詳細画面と、最初にモンスターを選ぶ画面で使うので Views/Monster に置いている
 ///
 /// RealityKit（RealityView や ARView）ではなく SceneKit で表示する
 /// 捕獲画面の ARView が動いている間に RealityKit の画面をもう 1 つ出すと、捕獲画面の AR が壊れる
