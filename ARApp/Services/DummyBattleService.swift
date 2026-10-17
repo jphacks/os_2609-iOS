@@ -16,7 +16,7 @@ final class DummyBattleService: BattleService {
     /// CPU が攻撃する間隔（秒）
     private static let attackInterval: Double = 1
 
-    func findOpponent(locationID: String, monster: Monster) async throws -> Monster {
+    func findOpponent(monster: Monster) async throws -> Monster {
         try await Task.sleep(for: .seconds(1.5))
         return Monster.all.randomElement()!
     }

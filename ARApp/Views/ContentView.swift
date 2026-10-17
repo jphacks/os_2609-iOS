@@ -23,7 +23,7 @@ struct ContentView: View {
                 ARCaptureView(locationViewModel: locationViewModel, wildMonsterViewModel: wildMonsterViewModel)
             }
             Tab("バトル", systemImage: "bolt.fill") {
-                BattleView(locationViewModel: locationViewModel, service: battleService)
+                BattleView(service: battleService)
             }
         }
         .onAppear {

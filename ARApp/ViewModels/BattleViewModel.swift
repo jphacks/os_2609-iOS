@@ -7,14 +7,15 @@ import Foundation
 import Observation
 
 /// 対戦画面の状態と、バトルの進行
-/// 同じ地点にいる相手とマッチングし、お互いにタップで攻撃し合う
+/// バトルの画面を開いている人どうしを自動でマッチングし、お互いにタップで攻撃し合う
+/// 画面を開いている間は、相手が見つかるまで自動で待ち続ける
 /// 自分の行動はすぐに反映して相手に送り、相手の行動は届いた順に反映する（どちらも BattleEngine で計算する）
 @Observable
 final class BattleViewModel {
     enum Phase {
-        /// 対戦相手を探す前
+        /// 対戦相手を待っていない（画面を開いていない、または通信に失敗してやり直すのを待っている）
         case lobby
-        /// 対戦相手を探している
+        /// 対戦相手を待っている
         case searching
         /// 相手探しをやめて、片付けが終わるのを待っている
         case cancellingSearch
@@ -58,11 +59,19 @@ final class BattleViewModel {
     private(set) var lastHitOnMe: Hit?
     /// この時刻になるまで次の通常攻撃はできない（クールダウン）
     private var nextNormalAttackAt = ContinuousClock.now
+    /// バトルの画面が表示されていて、対戦相手を待ちたいか
+    private var wantsToWait = false
+
+    /// 通信に失敗したとき、もう一度相手を待ち始めるまでの時間（秒）
+    private static let retryDelay: Double = 3
 
     private let service: any BattleService
     private var searchTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
     private var finishTask: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
+    /// 対戦をやめたときの片付け。次の相手探しは、これが終わってから始める
+    private var leaveTask: Task<Void, Never>?
 
     init(service: any BattleService) {
         self.service = service
@@ -71,14 +80,30 @@ final class BattleViewModel {
     var me: Fighter? { state?.fighters[Self.myID] }
     var opponent: Fighter? { state?.fighters[Self.opponentID] }
 
-    /// 同じ地点にいる対戦相手を探す
-    func findOpponent(locationID: String) {
-        guard phase == .lobby else { return }
+    /// バトルの画面が表示されたときに呼ぶ。対戦相手を待ち始める
+    func startWaiting() {
+        wantsToWait = true
+        findOpponentIfWanted()
+    }
+
+    /// バトルの画面が隠れたときに呼ぶ。対戦相手を待つのをやめる（対戦中ならそのまま続ける）
+    func stopWaiting() {
+        wantsToWait = false
+        retryTask?.cancel()
+        retryTask = nil
+        cancelSearch()
+    }
+
+    /// 画面が表示されていて、ロビーにいれば、対戦相手を待ち始める
+    private func findOpponentIfWanted() {
+        guard wantsToWait, phase == .lobby else { return }
         phase = .searching
         errorMessage = nil
-        searchTask = Task {
+        searchTask = Task { [leaveTask] in
+            // 前の対戦の片付けが終わる前に始めると、片付けが新しい相手探しの状態まで消してしまう
+            await leaveTask?.value
             do {
-                let opponentMonster = try await service.findOpponent(locationID: locationID, monster: myMonster)
+                let opponentMonster = try await service.findOpponent(monster: myMonster)
                 guard !Task.isCancelled else { return }
                 startBattle(against: opponentMonster)
             } catch {
@@ -93,7 +118,8 @@ final class BattleViewModel {
     /// 対戦相手を探すのをやめる
     /// 片付けが終わってからロビーに戻る
     /// 終わる前に次の相手探しを始めると、前の片付けが新しい相手探しの状態まで消してしまうため
-    func cancelSearch() {
+    /// 片付けている間に画面がまた表示されていたら、片付け終わってから待ち直す
+    private func cancelSearch() {
         guard phase == .searching, let searchTask else { return }
         phase = .cancellingSearch
         searchTask.cancel()
@@ -102,6 +128,7 @@ final class BattleViewModel {
             // キャンセルと同時にマッチングが終わっていた場合に備えて、対戦からも抜ける
             await service.leave()
             phase = .lobby
+            findOpponentIfWanted()
         }
     }
 
@@ -119,13 +146,19 @@ final class BattleViewModel {
         perform(.specialAttack)
     }
 
-    /// 対戦をやめてロビーに戻る。次の対戦では別のモンスターを使う
+    /// 結果を見終わったときに呼ぶ。ロビーに戻り、次の対戦相手を待ち始める。次の対戦では別のモンスターを使う
     func leaveBattle() {
+        reset()
+        findOpponentIfWanted()
+    }
+
+    /// 対戦や相手探しをやめて、ロビーの状態に戻す
+    private func reset() {
         searchTask?.cancel()
         receiveTask?.cancel()
         finishTask?.cancel()
         finishTask = nil
-        Task { await service.leave() }
+        leaveTask = Task { await service.leave() }
         state = nil
         opponentMonster = nil
         outcome = nil
@@ -201,11 +234,17 @@ final class BattleViewModel {
         }
     }
 
-    /// 相手が見つからない・相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る
+    /// 相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻り、少し待ってから相手を待ち直す
+    /// すぐに待ち直すと、通信できない間ずっと失敗をくり返してしまうため
     private func fail(_ error: Error) {
         // 【開発用】原因を調べるためのログ。リリースするときに消してよい
         print("対戦の通信に失敗しました: \(error)")
-        leaveBattle()
-        errorMessage = "対戦できませんでした。もう一度お試しください"
+        reset()
+        errorMessage = "通信に失敗しました。もう一度相手を探します"
+        retryTask = Task {
+            try? await Task.sleep(for: .seconds(Self.retryDelay))
+            guard !Task.isCancelled else { return }
+            findOpponentIfWanted()
+        }
     }
 }

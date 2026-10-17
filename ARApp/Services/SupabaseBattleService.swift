@@ -8,14 +8,13 @@ import Supabase
 
 /// Supabase で対戦相手とやり取りする
 /// テーブルと関数の定義は リポジトリ直下の supabase/schema.sql にある
-/// - 相手探し：join_battle 関数を呼ぶ。待っている人がいれば入り、いなければ部屋を作って待つ
+/// - 相手探し：join_battle 関数を呼ぶ。待っている人がいれば（場所は問わない）入り、いなければ部屋を作って待つ
+///   待っている間は keep_waiting 関数で、まだ待っていることを定期的に伝える。伝えなくなった部屋には誰も入らない
 /// - 行動：battle_actions テーブルに 1 回ずつ番号（seq）を付けて書き込み、相手の書き込みを Realtime で受け取る
 ///   相手の行動は番号順に流す。Realtime がつながらない・取りこぼしたときは、2 秒ごとにデータベースを直接見て取り直す
 /// - 決着：finish_battle 関数で勝った人を記録する。2 人とも記録しようとしたら、先に記録した方に決まる
 final class SupabaseBattleService: BattleService {
     enum ServiceError: Error {
-        /// 部屋を作って待っても、相手が来なかった
-        case noOpponent
         /// 相手の行動が一定時間届かない、または相手が対戦をやめた
         case opponentLeft
         /// 届いたモンスター名や行動が、アプリの知らない値だった
@@ -26,9 +25,9 @@ final class SupabaseBattleService: BattleService {
         case sendFailed
     }
 
-    /// 部屋を作ってからこの時間待っても相手が来なければ、あきらめる（秒）
-    /// join_battle は 2 分より古い部屋を使わないので、それより少し短くする
-    private static let matchingTimeout: TimeInterval = 110
+    /// 部屋を作って待っている間、まだ待っていることを伝える間隔（秒）
+    /// join_battle は 30 秒以上伝えてこない部屋を使わないので、それより十分短くする
+    private static let keepWaitingInterval: TimeInterval = 5
     /// 相手の行動がこの時間届かなければ、相手がいなくなったとみなす（秒）
     private static let opponentTimeout: TimeInterval = 60
     /// 書き込みに失敗したとき、何回まで試すか
@@ -74,10 +73,10 @@ final class SupabaseBattleService: BattleService {
         client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey)
     }
 
-    func findOpponent(locationID: String, monster: Monster) async throws -> Monster {
+    func findOpponent(monster: Monster) async throws -> Monster {
         await leave()
         do {
-            return try await joinAndWait(locationID: locationID, monster: monster)
+            return try await joinAndWait(monster: monster)
         } catch {
             // キャンセルされたり失敗したりしたら、作った部屋が相手待ちのまま残らないように片付ける
             // キャンセルされた Task の中で通信すると通信まで取り消されるので、別の Task で片付けて終わるのを待つ
@@ -87,10 +86,10 @@ final class SupabaseBattleService: BattleService {
     }
 
     /// join_battle で部屋に入り（または作り）、相手がそろうまで待つ
-    private func joinAndWait(locationID: String, monster: Monster) async throws -> Monster {
+    private func joinAndWait(monster: Monster) async throws -> Monster {
         // 途中でキャンセルされても通信は最後まで行い、部屋の ID を受け取ってから片付けられるようにする
         // （通信ごと取り消すと、サーバーには部屋ができたのに ID がわからず消せなくなる）
-        let params = JoinBattleParams(locationID: locationID, playerID: playerID, monster: monster.modelName)
+        let params = JoinBattleParams(playerID: playerID, monster: monster.modelName)
         let row: BattleRow = try await Task { [client] in
             try await client.rpc("join_battle", params: params).execute().value
         }.value
@@ -105,12 +104,17 @@ final class SupabaseBattleService: BattleService {
         }
         startListening(battleID: row.id)
 
-        // 自分が部屋を作った場合は、相手が入ってくるまで待つ
+        // 自分が部屋を作った場合は、相手が入ってくるまで（キャンセルされるまで）待ち続ける
         // Realtime を取りこぼしたときのために、ときどきデータベースも直接見る（購読を始める前に入ってきた場合もここで気づく）
-        let deadline = Date.now.addingTimeInterval(Self.matchingTimeout)
         var nextFetch = Date.now
+        var nextKeepWaiting = Date.now.addingTimeInterval(Self.keepWaitingInterval)
         while opponentMonsterName == nil {
-            guard Date.now < deadline else { throw ServiceError.noOpponent }
+            if Date.now >= nextKeepWaiting {
+                // 通信が一瞬切れても失敗にせず、次の回で伝える
+                let params = KeepWaitingParams(battleID: row.id)
+                _ = try? await client.rpc("keep_waiting", params: params).execute()
+                nextKeepWaiting = Date.now.addingTimeInterval(Self.keepWaitingInterval)
+            }
             if Date.now >= nextFetch {
                 // 通信が一瞬切れても失敗にせず、次の確認を待つ
                 if let battle = try? await fetchBattle(id: row.id) {
@@ -419,14 +423,20 @@ nonisolated private struct ActionRow: Codable, Sendable {
 }
 
 nonisolated private struct JoinBattleParams: Encodable, Sendable {
-    let locationID: String
     let playerID: UUID
     let monster: String
 
     enum CodingKeys: String, CodingKey {
-        case locationID = "p_location_id"
         case playerID = "p_player_id"
         case monster = "p_monster"
+    }
+}
+
+nonisolated private struct KeepWaitingParams: Encodable, Sendable {
+    let battleID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case battleID = "p_battle_id"
     }
 }
 

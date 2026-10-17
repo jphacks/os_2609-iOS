@@ -5,11 +5,11 @@
 
 import SwiftUI
 
-/// 対戦画面。同じ地点にいる相手とマッチングし、画面の空いている所をタップして攻撃し、溜まったら必殺技を撃つ
+/// 対戦画面。開いている間は自動で対戦相手を待ち、見つかったら対戦が始まる
+/// 画面の空いている所をタップして攻撃し、溜まったら必殺技を撃つ
 /// 対戦中は、カメラに映る床の上でモンスター同士が戦う（AR）
 /// 部品は同じフォルダの別ファイルにある（StatBarComponent、BattleEffects など）
 struct BattleView: View {
-    let locationViewModel: LocationViewModel
     @State private var viewModel: BattleViewModel
     /// タップした位置の波紋。クールダウン中でも出るので、タップが届いているかがわかる
     @State private var tapRipple: TapRipple?
@@ -27,15 +27,20 @@ struct BattleView: View {
     /// この時間（秒）次の攻撃を当てなかったら、続けて当てた回数を 0 に戻す
     private static let comboTimeout = 1.2
 
-    init(locationViewModel: LocationViewModel, service: any BattleService) {
-        self.locationViewModel = locationViewModel
+    init(service: any BattleService) {
         _viewModel = State(initialValue: BattleViewModel(service: service))
     }
 
     var body: some View {
         content
-            .onAppear { isVisible = true }
-            .onDisappear { isVisible = false }
+            .onAppear {
+                isVisible = true
+                viewModel.startWaiting()
+            }
+            .onDisappear {
+                isVisible = false
+                viewModel.stopWaiting()
+            }
     }
 
     @ViewBuilder
@@ -43,15 +48,7 @@ struct BattleView: View {
         if let me = viewModel.me, let opponent = viewModel.opponent, let opponentMonster = viewModel.opponentMonster {
             fightScreen(me: me, opponent: opponent, opponentMonster: opponentMonster)
         } else {
-            BattleLobbyComponent(
-                myMonster: viewModel.myMonster,
-                location: locationViewModel.currentLocation,
-                isSearching: viewModel.phase == .searching || viewModel.phase == .cancellingSearch,
-                isCancelling: viewModel.phase == .cancellingSearch,
-                errorMessage: viewModel.errorMessage,
-                onFind: { viewModel.findOpponent(locationID: $0.id) },
-                onCancel: { viewModel.cancelSearch() }
-            )
+            BattleLobbyComponent(myMonster: viewModel.myMonster, errorMessage: viewModel.errorMessage)
             .padding()
         }
     }
@@ -206,8 +203,6 @@ private struct TapRipple {
 }
 
 #Preview {
-    // ダミーの相手。「対戦相手を探す」を押すと CPU とすぐに対戦が始まる
-    let locationViewModel = LocationViewModel(scanner: DummyBeaconScanner())
-    BattleView(locationViewModel: locationViewModel, service: DummyBattleService())
-        .onAppear { locationViewModel.start() }
+    // ダミーの相手。開くと少し待ってから CPU との対戦が始まる
+    BattleView(service: DummyBattleService())
 }
