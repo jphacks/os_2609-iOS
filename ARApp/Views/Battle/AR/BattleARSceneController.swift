@@ -51,6 +51,9 @@ final class BattleARSceneController {
     private var opponentAnimationID: UUID?
     private var hitOnOpponentID: UUID?
     private var hitOnMeID: UUID?
+    /// 立っている間にくり返すアニメーション。置く前に受け取った分は、置いたときに流す
+    private var myIdle = MonsterAnimation.idle
+    private var opponentIdle = MonsterAnimation.idle
 
     /// 床に置いたときのモンスターの高さ（m）。ダメージの数字を頭の上に出すのに使う
     private var myHeight: Float { myMonster.size * Self.sizeScale }
@@ -82,11 +85,21 @@ final class BattleARSceneController {
     /// SwiftUI の状態に合わせて、アニメーションを流したり踏み込ませたりする
     /// id が前と同じなら何もしない（updateUIView は、関係のない状態が変わったときも呼ばれるため）
     func update(
+        myIdle: MonsterAnimation,
+        opponentIdle: MonsterAnimation,
         myAnimation: MonsterAnimationRequest?,
         opponentAnimation: MonsterAnimationRequest?,
         hitOnOpponent: BattleViewModel.Hit?,
         hitOnMe: BattleViewModel.Hit?
     ) {
+        if myIdle != self.myIdle {
+            self.myIdle = myIdle
+            myEntity?.monsterAnimator?.changeLoop(to: myIdle)
+        }
+        if opponentIdle != self.opponentIdle {
+            self.opponentIdle = opponentIdle
+            opponentEntity?.monsterAnimator?.changeLoop(to: opponentIdle)
+        }
         if let myAnimation, myAnimation.id != myAnimationID {
             myAnimationID = myAnimation.id
             myEntity?.monsterAnimator?.play(myAnimation)
@@ -147,6 +160,8 @@ final class BattleARSceneController {
         opponentEntity = opponent
         myHome = me.transform
         opponentHome = opponent.transform
+        me.monsterAnimator?.changeLoop(to: myIdle)
+        opponent.monsterAnimator?.changeLoop(to: opponentIdle)
         onPlaced()
     }
 

@@ -26,6 +26,8 @@ struct BattleView: View {
     private static let celebrationDelay = 1.0
     /// この時間（秒）次の攻撃を当てなかったら、続けて当てた回数を 0 に戻す
     private static let comboTimeout = 1.2
+    /// HP がこの割合より少なくなったら、立っている間の動きを弱った動きにする
+    private static let weakHPRatio = 0.2
 
     init(service: any BattleService) {
         _viewModel = State(initialValue: BattleViewModel(service: service))
@@ -98,6 +100,8 @@ struct BattleView: View {
             BattleArenaComponent(
                 myMonster: viewModel.myMonster,
                 opponentMonster: opponentMonster,
+                myIdle: idleAnimation(of: me),
+                opponentIdle: idleAnimation(of: opponent),
                 myAnimation: myAnimation,
                 opponentAnimation: opponentAnimation,
                 hitOnOpponent: viewModel.lastHitOnOpponent,
@@ -183,6 +187,11 @@ struct BattleView: View {
             opponentAnimation = nil
             comboCount = 0
         }
+    }
+
+    /// 立っている間にくり返すアニメーション。HP が少ないと、頭を抱えてしゃがむ弱った動きになる
+    private func idleAnimation(of fighter: Fighter) -> MonsterAnimation {
+        Double(fighter.hp) < Double(fighter.maxHP) * Self.weakHPRatio ? .duck : .idle
     }
 
     /// 攻撃する側のアニメーション。必殺技は、溜めの動きのあとに攻撃する

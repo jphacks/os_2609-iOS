@@ -13,6 +13,7 @@ import RealityKit
 ///     model.monsterAnimator?.playOnce(.punch)  // 1 回だけ流して、くり返していたアニメーションに戻る
 ///     model.monsterAnimator?.playOnce(.death, staysAtEnd: true)  // 最後のポーズのまま止まる
 ///     model.monsterAnimator?.play(request)     // MonsterAnimationRequest のとおりに流す（待ってから、続けて流すなど）
+///     model.monsterAnimator?.changeLoop(to: .duck)  // くり返すアニメーションを変える（1 回だけ流している途中なら、終わってから）
 ///
 /// 切り替えるときは前のアニメーションと少しの間混ぜて、ポーズが急に飛ばないようにする
 final class MonsterAnimator {
@@ -21,6 +22,8 @@ final class MonsterAnimator {
     private let source: AnimationResource?
     /// くり返し流しているアニメーション。1 回だけ流すアニメーションが終わったら、これに戻る
     private var looping = MonsterAnimation.idle
+    /// 1 回だけ流すアニメーションの途中か、最後のポーズで止まっている
+    private var isPlayingOnce = false
     private var returnTask: Task<Void, Never>?
     /// play(_:) で、流し始めるのを待っているタスク
     private var requestTask: Task<Void, Never>?
@@ -54,9 +57,19 @@ final class MonsterAnimator {
         }
     }
 
+    /// くり返すアニメーションを変える（HP が減って弱ったときなど）
+    /// loop(_:) と違い、1 回だけ流している途中ならそれを止めず、終わって戻るときに切り替わる
+    /// 最後のポーズで止まっている（倒れている）間は切り替えない
+    func changeLoop(to animation: MonsterAnimation) {
+        looping = animation
+        guard !isPlayingOnce else { return }
+        play(animation, repeats: true)
+    }
+
     /// アニメーションをくり返し流す
     func loop(_ animation: MonsterAnimation) {
         looping = animation
+        isPlayingOnce = false
         returnTask?.cancel()
         returnTask = nil
         play(animation, repeats: true)
@@ -65,6 +78,7 @@ final class MonsterAnimator {
     /// アニメーションを 1 回だけ流す。終わったら、くり返していたアニメーションに戻る
     /// staysAtEnd を true にすると、戻らずに最後のポーズのまま止まる（倒れる Death など）
     func playOnce(_ animation: MonsterAnimation, staysAtEnd: Bool = false) {
+        isPlayingOnce = true
         returnTask?.cancel()
         returnTask = nil
         play(animation, repeats: false)
@@ -73,6 +87,7 @@ final class MonsterAnimator {
             // 戻るときも混ぜるので、その時間だけ早めに切り替え始める
             try? await Task.sleep(for: .seconds(animation.duration - MonsterAnimation.transitionDuration))
             guard let self, !Task.isCancelled else { return }
+            self.isPlayingOnce = false
             self.play(self.looping, repeats: true)
         }
     }

@@ -12,6 +12,9 @@ import ARKit
 struct BattleARViewContainer: UIViewRepresentable {
     let myMonster: Monster
     let opponentMonster: Monster
+    /// 立っている間にくり返すアニメーション（HP が少ないと弱った動きになる）
+    let myIdle: MonsterAnimation
+    let opponentIdle: MonsterAnimation
     let myAnimation: MonsterAnimationRequest?
     let opponentAnimation: MonsterAnimationRequest?
     /// 攻撃が当たった出来事。変わるたびに、攻撃した側のモンスターが踏み込み、受けた側の頭の上にダメージの数字が出る
@@ -41,6 +44,8 @@ struct BattleARViewContainer: UIViewRepresentable {
 
     func updateUIView(_ uiView: ARView, context: Context) {
         context.coordinator.update(
+            myIdle: myIdle,
+            opponentIdle: opponentIdle,
             myAnimation: myAnimation,
             opponentAnimation: opponentAnimation,
             hitOnOpponent: hitOnOpponent,

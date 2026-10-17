@@ -11,6 +11,8 @@ import ARKit
 struct BattleArenaComponent: View {
     let myMonster: Monster
     let opponentMonster: Monster
+    let myIdle: MonsterAnimation
+    let opponentIdle: MonsterAnimation
     let myAnimation: MonsterAnimationRequest?
     let opponentAnimation: MonsterAnimationRequest?
     let hitOnOpponent: BattleViewModel.Hit?
@@ -35,6 +37,8 @@ struct BattleArenaComponent: View {
                 BattleARViewContainer(
                     myMonster: myMonster,
                     opponentMonster: opponentMonster,
+                    myIdle: myIdle,
+                    opponentIdle: opponentIdle,
                     myAnimation: myAnimation,
                     opponentAnimation: opponentAnimation,
                     hitOnOpponent: hitOnOpponent,
