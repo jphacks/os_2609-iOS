@@ -260,19 +260,17 @@ final class SupabaseBattleService: BattleService {
 
 // MARK: - テーブルの行（supabase/schema.sql の列と対応する）
 
-nonisolated private struct BattleRow: Codable, Sendable {
+nonisolated private struct BattleRow: Decodable, Sendable {
     let id: UUID
     let status: String
     let player1ID: UUID
     let player1Monster: String
-    let player2ID: UUID?
     let player2Monster: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status
         case player1ID = "player1_id"
         case player1Monster = "player1_monster"
-        case player2ID = "player2_id"
         case player2Monster = "player2_monster"
     }
 }
