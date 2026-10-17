@@ -55,7 +55,8 @@ create policy "誰でも行動を送れる" on battle_actions for insert with ch
 -- 2 人が同時に呼んでも、ロックで 1 人ずつ順番に処理する
 -- （順番にしないと、待っている部屋がないときに 2 人とも部屋を作り、別々の部屋で待ち続けてしまう）
 -- ロックはトランザクションが終わると外れるので、後の人には先の人が作った部屋が見える
--- 30 秒以上「まだ待っている」と伝えてこない部屋は、待っていた人がもういない（アプリが落ちたなど）とみなして使わない
+-- 10 秒以上「まだ待っている」と伝えてこない部屋は、待っていた人がもういない（アプリが落ちたなど）とみなして使わない
+-- 長くすると、待っていた人がいなくなった部屋に入って、動かない相手と対戦してしまう
 create or replace function join_battle(p_player_id uuid, p_monster text)
 returns battles
 language plpgsql
@@ -73,7 +74,7 @@ begin
     select id from battles
     where status = 'waiting'
       and player1_id <> p_player_id
-      and last_seen_at > now() - interval '30 seconds'
+      and last_seen_at > now() - interval '10 seconds'
     order by created_at
     limit 1
     for update skip locked
@@ -93,7 +94,7 @@ $$;
 
 grant execute on function join_battle to anon;
 
--- 部屋を作って待っている人が、まだ待っていることを伝える（アプリが 5 秒ごとに呼ぶ）
+-- 部屋を作って待っている人が、まだ待っていることを伝える（アプリが 3 秒ごとに呼ぶ）
 create or replace function keep_waiting(p_battle_id uuid)
 returns void
 language sql

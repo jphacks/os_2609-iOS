@@ -26,8 +26,8 @@ final class SupabaseBattleService: BattleService {
     }
 
     /// 部屋を作って待っている間、まだ待っていることを伝える間隔（秒）
-    /// join_battle は 30 秒以上伝えてこない部屋を使わないので、それより十分短くする
-    private static let keepWaitingInterval: TimeInterval = 5
+    /// join_battle は 10 秒以上伝えてこない部屋を使わないので、通信が 1〜2 回途切れても間に合うように短くする
+    private static let keepWaitingInterval: TimeInterval = 3
     /// 相手の行動がこの時間届かなければ、相手がいなくなったとみなす（秒）
     private static let opponentTimeout: TimeInterval = 60
     /// 書き込みに失敗したとき、何回まで試すか
