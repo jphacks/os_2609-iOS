@@ -90,9 +90,11 @@ final class SupabaseBattleService: BattleService {
         // 途中でキャンセルされても通信は最後まで行い、部屋の ID を受け取ってから片付けられるようにする
         // （通信ごと取り消すと、サーバーには部屋ができたのに ID がわからず消せなくなる）
         let params = JoinBattleParams(playerID: playerID, monster: monster.modelName)
+        print("🔍 [Match] join_battle を呼ぶ 自分=\(playerID.uuidString.prefix(8))") // ⚠️ 開発用（調査中）
         let row: BattleRow = try await Task { [client] in
             try await client.rpc("join_battle", params: params).execute().value
         }.value
+        print("🔍 [Match] join_battle の返事 部屋=\(row.id.uuidString.prefix(8)) \(row.player1ID == playerID ? "部屋を作って待つ" : "待っていた人の部屋に入った（相手=\(row.player1ID.uuidString.prefix(8))）")") // ⚠️ 開発用（調査中）
         battleID = row.id
         try Task.checkCancellation()
 
@@ -187,6 +189,8 @@ final class SupabaseBattleService: BattleService {
     }
 
     func leave() async {
+        print("🔍 [Match] leave を始める 部屋=\(battleID?.uuidString.prefix(8) ?? "なし")") // ⚠️ 開発用（調査中）
+        defer { print("🔍 [Match] leave が終わった") } // ⚠️ 開発用（調査中）
         // 先に状態を空にしてから通信する。通信を待っている間に次の相手探しが始まっても、新しい対戦に触れないようにする
         let leavingBattleID = battleID
         let leavingChannel = channel
