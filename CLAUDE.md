@@ -20,6 +20,7 @@ ARApp/
 ├── App/          エントリポイント（ARAppApp.swift）
 ├── Models/       データ定義のみ（例：Monster）。UI やフレームワークに依存しない
 │   └── Battle/   バトルの中だけで使うデータ（攻撃の種類、ゲージ判定など）
+├── Logic/        ゲームのルール（例：RealtimeBattleEngine）。状態を受け取って計算するだけで、UI・タイマー・通信は持たない
 ├── ViewModels/   画面の状態とロジック（@Observable）
 ├── Views/        SwiftUI の View。ContentView 以外は機能ごとのフォルダに置く
 │   ├── Map/      マップ画面（屋内マップ、現在地）
