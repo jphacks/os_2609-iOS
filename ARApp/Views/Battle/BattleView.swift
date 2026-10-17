@@ -20,10 +20,6 @@ struct BattleView: View {
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
 
-    /// 攻撃の動きを流し始めてから、相手に当たるまでの時間（秒）。のけぞりをこの分だけ遅らせる
-    private static let attackImpactTime = 0.25
-    /// 必殺技を撃つ前の溜めの動き
-    private static let specialCharge = MonsterAnimation.jump
     /// 決着してから、勝った側が喜び始めるまでの時間（秒）。最後の攻撃の動きを見せてから喜ぶ
     private static let celebrationDelay = 1.0
 
@@ -63,26 +59,8 @@ struct BattleView: View {
                 .padding(12)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
 
-            // 2. 中央：当たったダメージの数字。モンスターは後ろの AR の床の上にいる
-            // 数字はモンスターの位置には合わせず、相手の分は上、自分の分は下に出す
-            ZStack {
-                if let hit = viewModel.lastHitOnOpponent {
-                    FloatingDamageComponent(
-                        text: "-\(hit.damage)",
-                        color: hit.isSpecial ? .yellow : .red,
-                        fontSize: hit.isSpecial ? 64 : 36
-                    )
-                    .id(hit.id)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 120)
-                }
-                if let hit = viewModel.lastHitOnMe {
-                    FloatingDamageComponent(text: "-\(hit.damage)", color: .purple, fontSize: hit.isSpecial ? 64 : 36)
-                        .id(hit.id)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 2. 中央：空けておき、後ろの AR の床の上で戦うモンスターを見せる
+            Spacer()
 
             // 3. 下部：自分の HP と必殺技ゲージ
             VStack(spacing: 8) {
@@ -117,8 +95,8 @@ struct BattleView: View {
                 opponentMonster: opponentMonster,
                 myAnimation: myAnimation,
                 opponentAnimation: opponentAnimation,
-                hitOnOpponentID: viewModel.lastHitOnOpponent?.id,
-                hitOnMeID: viewModel.lastHitOnMe?.id,
+                hitOnOpponent: viewModel.lastHitOnOpponent,
+                hitOnMe: viewModel.lastHitOnMe,
                 isVisible: isVisible
             )
             // 攻撃を受けたら、カメラの映像ごと揺らす
@@ -141,7 +119,7 @@ struct BattleView: View {
         .overlay {
             // 必殺技が当たった瞬間（溜めのあと）、画面全体を光らせる
             if let hit = viewModel.lastHitOnOpponent, hit.isSpecial {
-                FlashComponent(delay: Self.impactDelay(of: hit))
+                FlashComponent(delay: hit.impactDelay)
                     .id(hit.id)
             }
         }
@@ -194,22 +172,15 @@ struct BattleView: View {
     /// 攻撃する側のアニメーション。必殺技は、溜めの動きのあとに攻撃する
     private func attackAnimation(of monster: Monster, hit: BattleViewModel.Hit) -> MonsterAnimationRequest {
         hit.isSpecial
-            ? MonsterAnimationRequest(animations: [Self.specialCharge, monster.specialAttack])
+            ? MonsterAnimationRequest(animations: [BattleViewModel.Hit.specialCharge, monster.specialAttack])
             : MonsterAnimationRequest(animations: [monster.normalAttack])
     }
 
     /// 攻撃を受けた側のアニメーション。攻撃が当たるタイミングでのけぞり、HP が 0 になったら倒れたままになる
     private func reactionAnimation(hp: Int, hit: BattleViewModel.Hit) -> MonsterAnimationRequest {
         hp == 0
-            ? MonsterAnimationRequest(animations: [.death], delay: Self.impactDelay(of: hit), ending: .staysAtEnd)
-            : MonsterAnimationRequest(animations: [.hitReact], delay: Self.impactDelay(of: hit))
-    }
-
-    /// 攻撃の動きを流し始めてから、相手に当たるまでの時間（秒）。必殺技は溜めの動きの分だけ遅くなる
-    /// 溜めの動きは、終わる少し前（混ぜて切り替える時間）から攻撃の動きに切り替わる
-    private static func impactDelay(of hit: BattleViewModel.Hit) -> Double {
-        let chargeTime = hit.isSpecial ? specialCharge.duration - MonsterAnimation.transitionDuration : 0
-        return chargeTime + attackImpactTime
+            ? MonsterAnimationRequest(animations: [.death], delay: hit.impactDelay, ending: .staysAtEnd)
+            : MonsterAnimationRequest(animations: [.hitReact], delay: hit.impactDelay)
     }
 }
 

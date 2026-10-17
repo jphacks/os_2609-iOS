@@ -14,9 +14,9 @@ struct BattleARViewContainer: UIViewRepresentable {
     let opponentMonster: Monster
     let myAnimation: MonsterAnimationRequest?
     let opponentAnimation: MonsterAnimationRequest?
-    /// 攻撃が当たった出来事の id。変わるたびに、攻撃した側のモンスターが踏み込む
-    let hitOnOpponentID: UUID?
-    let hitOnMeID: UUID?
+    /// 攻撃が当たった出来事。変わるたびに、攻撃した側のモンスターが踏み込み、受けた側の頭の上にダメージの数字が出る
+    let hitOnOpponent: BattleViewModel.Hit?
+    let hitOnMe: BattleViewModel.Hit?
     /// 2 体とも床に置き終わったときに呼ばれる
     let onPlaced: () -> Void
 
@@ -43,8 +43,8 @@ struct BattleARViewContainer: UIViewRepresentable {
         context.coordinator.update(
             myAnimation: myAnimation,
             opponentAnimation: opponentAnimation,
-            hitOnOpponentID: hitOnOpponentID,
-            hitOnMeID: hitOnMeID
+            hitOnOpponent: hitOnOpponent,
+            hitOnMe: hitOnMe
         )
     }
 

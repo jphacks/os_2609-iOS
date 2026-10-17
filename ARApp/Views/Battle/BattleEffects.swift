@@ -5,7 +5,22 @@
 
 import SwiftUI
 
-/// バトル画面の演出（揺れ、踏み込み、タップの波紋、ダメージの数字、画面の光）
+/// バトル画面の演出（揺れ、踏み込み、タップの波紋、画面の光）と、演出のタイミング
+/// ダメージの数字は AR の中に出す（BattleARSceneController）
+
+extension BattleViewModel.Hit {
+    /// 必殺技を撃つ前の溜めの動き
+    static let specialCharge = MonsterAnimation.jump
+    /// 攻撃の動きを流し始めてから、相手に当たるまでの時間（秒）
+    static let attackImpactTime = 0.25
+
+    /// 攻撃を始めてから相手に当たるまでの時間（秒）。のけぞり、ダメージの数字、画面の光をこの分だけ遅らせる
+    /// 必殺技は溜めの動きの分だけ遅くなる。溜めの動きは、終わる少し前（混ぜて切り替える時間）から攻撃の動きに切り替わる
+    var impactDelay: Double {
+        let chargeTime = isSpecial ? Self.specialCharge.duration - MonsterAnimation.transitionDuration : 0
+        return chargeTime + Self.attackImpactTime
+    }
+}
 
 extension View {
     /// trigger が変わるたびに左右に揺れる（攻撃を受けた演出）
@@ -39,27 +54,6 @@ struct TapRippleComponent: View {
             .opacity(isExpanded ? 0 : 1)
             .onAppear {
                 withAnimation(.easeOut(duration: 0.4)) { isExpanded = true }
-            }
-    }
-}
-
-/// ダメージの数字。上に浮かびながら消える
-struct FloatingDamageComponent: View {
-    let text: String
-    let color: Color
-    let fontSize: CGFloat
-    @State private var isFloating = false
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: fontSize, weight: .heavy, design: .rounded))
-            .foregroundStyle(color)
-            .shadow(radius: 2)
-            .offset(y: isFloating ? -80 : -20)
-            .opacity(isFloating ? 0 : 1)
-            .allowsHitTesting(false)
-            .onAppear {
-                withAnimation(.easeOut(duration: 0.6)) { isFloating = true }
             }
     }
 }
