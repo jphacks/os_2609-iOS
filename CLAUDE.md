@@ -29,8 +29,10 @@ ARApp/
 │   └── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル）
 ├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦）
 └── Resources/    アプリに同梱するファイル
-    └── Models/   モンスターの 3D モデル（USDZ）。Kenney「Cube Pets」（CC0）を OBJ から変換したもの
+    └── Models/   モンスターの 3D モデル（USDZ）。Quaternius「Ultimate Monsters」（CC0）を glTF から変換したもの
 ```
+
+モンスターの USDZ は `scripts/convert_monster_models.py`（Blender のスクリプト）で glTF から作る。使い方はスクリプトの先頭に書いてある。
 
 ### Views/Capture/AR の責務分担
 

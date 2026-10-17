@@ -14,11 +14,12 @@ enum MonsterEntity {
         do {
             let model = try await Entity(named: monster.modelName)
 
-            // モデルは 1〜2m の大きさで作られているので、一番長い辺が size になるように縮小する
+            // モデルは 3〜4m の大きさで作られているので、高さが size になるように縮小する
+            // 腕を横に広げた姿勢で作られていて横幅の方が大きいので、一番長い辺ではなく高さで合わせる
             // 原点は足元にあるので、そのまま床の上に乗る
-            let longestSide = model.visualBounds(relativeTo: nil).extents.max()
-            if longestSide > 0 {
-                model.scale = .init(repeating: monster.size / longestSide)
+            let height = model.visualBounds(relativeTo: nil).extents.y
+            if height > 0 {
+                model.scale = .init(repeating: monster.size / height)
             }
             return model
         } catch {
