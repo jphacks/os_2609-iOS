@@ -16,7 +16,11 @@
 import bpy
 import json
 import math
+import os
 import sys
+import tempfile
+
+from pxr import Sdf, Usd, UsdShade, UsdUtils
 
 src, dst, clips_path = sys.argv[sys.argv.index("--") + 1:][:3]
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -57,9 +61,13 @@ for action in sorted(bpy.data.actions, key=lambda a: a.name):
 
 scene.frame_start = 1
 scene.frame_end = cursor - 1
+# いったん .usdc（とテクスチャ）に書き出し、直してから USDZ にまとめる
+work_dir = tempfile.mkdtemp()
+usdc_path = os.path.join(work_dir, os.path.splitext(os.path.basename(dst))[0] + ".usdc")
+
 # RealityKit に合わせて Y を上にする。モデルの正面（glTF の +Z）は、USDZ でも +Z になる
 bpy.ops.wm.usd_export(
-    filepath=dst,
+    filepath=usdc_path,
     export_animation=True,
     export_armatures=True,
     only_deform_bones=True,
@@ -69,5 +77,20 @@ bpy.ops.wm.usd_export(
     export_global_forward_selection='NEGATIVE_Z',
     export_global_up_selection='Y',
 )
+
+# Blender は、テクスチャの UV を読むシェーダーの varname を string 型で書く（新しい USD の書き方）
+# iPhone の RealityKit は token 型でないと UV を読めず、テクスチャの隅の 1 色（暗い灰色）で塗られて真っ黒に見えるので、token 型に書き直す
+stage = Usd.Stage.Open(usdc_path)
+for prim in stage.Traverse():
+    shader = UsdShade.Shader(prim)
+    if not shader or shader.GetIdAttr().Get() != "UsdPrimvarReader_float2":
+        continue
+    varname = shader.GetInput("varname")
+    if varname and varname.GetTypeName() != Sdf.ValueTypeNames.Token:
+        value = varname.Get()
+        prim.RemoveProperty(varname.GetFullName())
+        shader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set(value)
+stage.GetRootLayer().Save()
+UsdUtils.CreateNewARKitUsdzPackage(usdc_path, dst)
 with open(clips_path, "w") as f:
     json.dump({"fps": fps, "clips": clips}, f, indent=1)
