@@ -22,6 +22,8 @@ final class ARCaptureViewModel {
     /// もう AR に置いたモンスター
     /// 現在地の推定がぶれて別の地点になっても、捕まえるか逃げるまでは出しておくために覚えておく
     private var placedIDs: Set<WildMonster.ID> = []
+    /// 捕獲を問い合わせ中のモンスター。返事を待つ間に何度タップされても、1 回だけ問い合わせる
+    private var capturingIDs: Set<WildMonster.ID> = []
 
     private let wildMonsterViewModel: WildMonsterViewModel
     private let locationViewModel: LocationViewModel
@@ -74,14 +76,28 @@ final class ARCaptureViewModel {
     /// モンスターがタップされたときに ARSceneController から呼ばれる
     /// distance は床の上での、自分とモンスターの距離（m）
     func monsterTapped(id: WildMonster.ID, distance: Float) {
-        guard let captured = shownMonsters.first(where: { $0.id == id }) else { return }
+        guard let target = shownMonsters.first(where: { $0.id == id }),
+              !capturingIDs.contains(id) else { return }
         guard distance <= Self.captureDistance else {
             showNotice("遠すぎる！もっと近づこう")
             return
         }
-        wildMonsterViewModel.capture(id: id)
-        placedIDs.remove(id)
-        showNotice("\(captured.monster.name)を捕まえた！")
+
+        // 捕獲は早い者勝ちなので、捕まえられたかは Service に問い合わせて決める
+        capturingIDs.insert(id)
+        Task {
+            defer { capturingIDs.remove(id) }
+            do {
+                if try await wildMonsterViewModel.capture(id: id) {
+                    showNotice("\(target.monster.name)を捕まえた！")
+                } else {
+                    showNotice("ほかの人に先を越された…")
+                }
+                placedIDs.remove(id)
+            } catch {
+                showNotice("通信に失敗しました。もう一度タップしてください")
+            }
+        }
     }
 
     private func showNotice(_ message: String) {

@@ -11,7 +11,7 @@ struct ContentView: View {
     /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
     @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
     /// 会場のどこにモンスターがいるかも、マップ画面と捕獲画面で共有する
-    @State private var wildMonsterViewModel = WildMonsterViewModel()
+    @State private var wildMonsterViewModel = WildMonsterViewModel(service: Self.makeWildMonsterService())
     @State private var battleService = Self.makeBattleService()
 
     var body: some View {
@@ -54,6 +54,11 @@ struct ContentView: View {
         } else {
             DummyBattleService()
         }
+    }
+
+    /// 【開発用】今は DummyWildMonsterService だけ。Supabase 版ができたら、makeBattleService() と同じように切り替える
+    private static func makeWildMonsterService() -> any WildMonsterService {
+        DummyWildMonsterService()
     }
 }
 
