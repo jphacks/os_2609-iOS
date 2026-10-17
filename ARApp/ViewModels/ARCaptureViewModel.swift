@@ -89,8 +89,3 @@ final class ARCaptureViewModel {
         encounter = .random()
     }
 }
-
-/// 詳細画面を fullScreenCover(item:) で開くために必要。モンスターは modelName で見分ける
-extension Monster: Identifiable {
-    var id: String { modelName }
-}
