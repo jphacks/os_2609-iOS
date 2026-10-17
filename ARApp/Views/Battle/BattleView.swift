@@ -61,8 +61,11 @@ struct BattleView: View {
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
 
             // 2. 中央：後ろの AR の床の上で戦うモンスターが見えるように空けておく。右上に、続けて当てた回数を出す
-            ComboComponent(count: comboCount)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            // 回数を出していない間も場所を取るように、透明な View に重ねる（ComboComponent は回数が少ないと空になる）
+            Color.clear
+                .overlay(alignment: .topTrailing) {
+                    ComboComponent(count: comboCount)
+                }
 
             // 3. 下部：自分の HP と必殺技ゲージ
             VStack(spacing: 8) {
