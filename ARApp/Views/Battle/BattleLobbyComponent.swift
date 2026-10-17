@@ -9,7 +9,7 @@ import SwiftUI
 /// 待つのは自動（BattleViewModel が、画面を開いている間ずっと待つ）なので、ボタンは置かない
 struct BattleLobbyComponent: View {
     let myMonster: Monster
-    /// 通信に失敗したときのメッセージ。少しすると自動で待ち直す
+    /// 対戦できなかったとき（通信の失敗、相手が抜けた）のメッセージ。少しすると自動で待ち直す
     let errorMessage: String?
     /// ときどき手を振るアニメーション
     @State private var waveAnimation: MonsterAnimationRequest?

@@ -16,6 +16,13 @@ struct BattleView: View {
     /// 自分と相手のモンスターに流すアニメーション。どれを流すかは見た目の話なので、この画面で決める
     @State private var myAnimation: MonsterAnimationRequest?
     @State private var opponentAnimation: MonsterAnimationRequest?
+    /// 必殺技の動きを流し終わる時刻。それまでは、そのモンスターに通常攻撃やのけぞりの動きを流さない
+    /// 流すと、必殺技の溜めや攻撃の動きが途中で切れてしまうため（倒れるときだけは流す）
+    @State private var mySpecialEndsAt = Date.distantPast
+    @State private var opponentSpecialEndsAt = Date.distantPast
+    /// 最後に相手へ当たった必殺技。画面を光らせるのに使う
+    /// lastHitOnOpponent を見ると、光る前に次の通常攻撃が当たったときに、光る演出ごと消えてしまう
+    @State private var lastSpecialHitOnOpponent: BattleViewModel.Hit?
     /// 続けて当てた回数。前に当ててから comboTimeout 秒以内に次を当てると増える
     @State private var comboCount = 0
     /// この画面が表示されているか
@@ -51,7 +58,7 @@ struct BattleView: View {
             fightScreen(me: me, opponent: opponent, opponentMonster: opponentMonster)
         } else {
             BattleLobbyComponent(myMonster: viewModel.myMonster, errorMessage: viewModel.errorMessage)
-            .padding()
+                .padding()
         }
     }
 
@@ -127,7 +134,7 @@ struct BattleView: View {
         }
         .overlay {
             // 必殺技が当たった瞬間（溜めのあと）、画面全体を光らせる
-            if let hit = viewModel.lastHitOnOpponent, hit.isSpecial {
+            if let hit = lastSpecialHitOnOpponent {
                 FlashComponent(delay: hit.impactDelay)
                     .id(hit.id)
             }
@@ -147,8 +154,16 @@ struct BattleView: View {
         // HP は引数の me / opponent ではなく viewModel から読む（引数は前に描いたときの値のことがある）
         .onChange(of: viewModel.lastHitOnOpponent?.id) {
             guard let hit = viewModel.lastHitOnOpponent, let opponent = viewModel.opponent else { return }
-            myAnimation = attackAnimation(of: viewModel.myMonster, hit: hit)
-            opponentAnimation = reactionAnimation(hp: opponent.hp, hit: hit)
+            if hit.isSpecial {
+                lastSpecialHitOnOpponent = hit
+                mySpecialEndsAt = .now + Self.specialDuration(of: viewModel.myMonster)
+                myAnimation = attackAnimation(of: viewModel.myMonster, hit: hit)
+            } else if Date.now >= mySpecialEndsAt {
+                myAnimation = attackAnimation(of: viewModel.myMonster, hit: hit)
+            }
+            if opponent.hp == 0 || Date.now >= opponentSpecialEndsAt {
+                opponentAnimation = reactionAnimation(hp: opponent.hp, hit: hit)
+            }
             comboCount += 1
         }
         // 当てるたびに待ち直し、次を当てないまま時間が過ぎたら、続けて当てた回数を 0 に戻す
@@ -162,8 +177,15 @@ struct BattleView: View {
         }
         .onChange(of: viewModel.lastHitOnMe?.id) {
             guard let hit = viewModel.lastHitOnMe, let me = viewModel.me else { return }
-            opponentAnimation = attackAnimation(of: opponentMonster, hit: hit)
-            myAnimation = reactionAnimation(hp: me.hp, hit: hit)
+            if hit.isSpecial {
+                opponentSpecialEndsAt = .now + Self.specialDuration(of: opponentMonster)
+                opponentAnimation = attackAnimation(of: opponentMonster, hit: hit)
+            } else if Date.now >= opponentSpecialEndsAt {
+                opponentAnimation = attackAnimation(of: opponentMonster, hit: hit)
+            }
+            if me.hp == 0 || Date.now >= mySpecialEndsAt {
+                myAnimation = reactionAnimation(hp: me.hp, hit: hit)
+            }
         }
         // 決着したら、勝った側が喜ぶ
         .onChange(of: viewModel.outcome) {
@@ -185,6 +207,9 @@ struct BattleView: View {
         .onDisappear {
             myAnimation = nil
             opponentAnimation = nil
+            mySpecialEndsAt = .distantPast
+            opponentSpecialEndsAt = .distantPast
+            lastSpecialHitOnOpponent = nil
             comboCount = 0
         }
     }
@@ -199,6 +224,11 @@ struct BattleView: View {
         hit.isSpecial
             ? MonsterAnimationRequest(animations: [BattleViewModel.Hit.specialCharge, monster.specialAttack])
             : MonsterAnimationRequest(animations: [monster.normalAttack])
+    }
+
+    /// 必殺技の動き（溜め → 攻撃）を流し終わるまでの時間（秒）
+    private static func specialDuration(of monster: Monster) -> Double {
+        BattleViewModel.Hit.specialCharge.duration - MonsterAnimation.transitionDuration + monster.specialAttack.duration
     }
 
     /// 攻撃を受けた側のアニメーション。攻撃が当たるタイミングでのけぞり、HP が 0 になったら倒れたままになる

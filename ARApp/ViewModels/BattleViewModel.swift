@@ -240,7 +240,7 @@ final class BattleViewModel {
         // 【開発用】原因を調べるためのログ。リリースするときに消してよい
         print("対戦の通信に失敗しました: \(error)")
         reset()
-        errorMessage = "通信に失敗しました。もう一度相手を探します"
+        errorMessage = "対戦できませんでした。もう一度相手を探します"
         retryTask = Task {
             try? await Task.sleep(for: .seconds(Self.retryDelay))
             guard !Task.isCancelled else { return }
