@@ -23,7 +23,7 @@ final class ARCaptureViewModel {
     /// 捕獲の結果を出しておく時間。過ぎたら次へ進む
     static let outcomeDisplayDuration: Duration = .seconds(2)
     /// モンスターが出るまでに歩く距離（m）。出るたびにこの範囲から選び直す
-    static let spawnWalkDistanceRange: ClosedRange<Float> = 5...10
+    static let spawnWalkDistanceRange: ClosedRange<Float> = 1...3
     /// 出現してから逃げるまでの時間。床が見えていない間（別のタブにいる間も）は数えず、見つかり直したら数え直す
     static let escapeDuration: Duration = .seconds(60)
 
