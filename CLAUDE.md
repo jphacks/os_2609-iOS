@@ -29,7 +29,7 @@ ARApp/
 │   ├── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル。対戦中は AR の床の上で戦う）
 │   │   └── AR/   バトル画面の ARView まわり
 │   └── Monster/  3D モンスターの見た目とアニメーション（捕獲画面とバトル画面で共通）
-├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦とモンスターの共有）
+├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦）
 └── Resources/    アプリに同梱するファイル
     └── Models/   モンスターの 3D モデル（USDZ）。Quaternius「Ultimate Monsters」（CC0）を glTF から変換したもの
 ```
@@ -103,11 +103,11 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
 - デプロイメントターゲットは iOS 26.2。デフォルトのアクター隔離は `MainActor`。
 - AR は実機でのみ動作する。シミュレータでは非対応メッセージが表示される。
   - バトル画面は、AR を使えなくても対戦（HP やタップ）だけは動くので、`BattleView` の #Preview やシミュレータで確かめられる。モンスターは表示されない。
-- 対戦と、会場に出現するモンスターの共有は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/` にある。
-  - 対戦は `supabase/schema.sql`、モンスターの出現と捕獲は `supabase/wild_monsters.sql`。別のファイルなので、片方を実行し直してももう片方のデータは消えない。
+- 対戦は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義は `supabase/schema.sql`。
   - 接続先（URL と anon key）は `Resources/SupabaseSecrets.plist` に書く。公開リポジトリなので `.gitignore` 済みで、コミットしない。ひな形は `supabase/SupabaseSecrets.example.plist`。
-  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` と、端末の中だけでモンスターを出す `DummyWildMonsterService` を使う。
+  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` を使う。
   - `service_role`（secret）の鍵はアプリにもリポジトリにも入れない。
+- 捕獲画面のモンスターは、AR の中で歩いた距離に応じて端末の中だけに出る（ほかのプレイヤーとは共有しない。現在地やマップにも依存しない）。
 
 ## ビルド確認
 

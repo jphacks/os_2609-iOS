@@ -10,8 +10,6 @@ import SwiftUI
 struct ContentView: View {
     /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
     @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
-    /// 会場のどこにモンスターがいるかも、マップ画面と捕獲画面で共有する
-    @State private var wildMonsterViewModel = WildMonsterViewModel(service: Self.makeWildMonsterService())
     @State private var battleService = Self.makeBattleService()
 
     var body: some View {
@@ -20,7 +18,7 @@ struct ContentView: View {
                 MapView(locationViewModel: locationViewModel)
             }
             Tab("捕獲", systemImage: "camera.viewfinder") {
-                ARCaptureView(locationViewModel: locationViewModel, wildMonsterViewModel: wildMonsterViewModel)
+                ARCaptureView(locationViewModel: locationViewModel)
             }
             Tab("バトル", systemImage: "bolt.fill") {
                 BattleView(service: battleService)
@@ -28,11 +26,9 @@ struct ContentView: View {
         }
         .onAppear {
             locationViewModel.start()
-            wildMonsterViewModel.start()
         }
         .onDisappear {
             locationViewModel.stop()
-            wildMonsterViewModel.stop()
         }
     }
 
@@ -53,16 +49,6 @@ struct ContentView: View {
             SupabaseBattleService(url: url, anonKey: SupabaseConfig.anonKey)
         } else {
             DummyBattleService()
-        }
-    }
-
-    /// SupabaseConfig に接続先が書いてあればプレイヤー全員でモンスターを共有し、なければこの端末の中だけで出すダミーを使う
-    /// 【開発用】ここで DummyWildMonsterService を使うのは開発中だけ。リリースするときは SupabaseWildMonsterService だけにする
-    private static func makeWildMonsterService() -> any WildMonsterService {
-        if SupabaseConfig.isConfigured, let url = URL(string: SupabaseConfig.url) {
-            SupabaseWildMonsterService(url: url, anonKey: SupabaseConfig.anonKey)
-        } else {
-            DummyWildMonsterService()
         }
     }
 }

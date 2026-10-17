@@ -7,7 +7,7 @@
 //  RSSI の測定が終わったら、このファイルごと削除してよい。
 //  削除するときは次もあわせて消す：
 //    1. ARCaptureView の `.overlay(alignment: .bottom) { LocationStatusComponent(...) }`
-//    2. ARCaptureView の `locationViewModel` プロパティと、ContentView で渡している引数
+//    2. ARCaptureView の `locationViewModel` プロパティと、ContentView で渡している引数（捕獲画面ではこの View でしか使っていない）
 //    3. LocationViewModel の `currentRSSI`（この View でしか使っていない）
 //
 
