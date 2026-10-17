@@ -12,7 +12,7 @@ import Combine
 /// 担当：床を選んでアンカーを置くこと、エンティティの配置、モンスターを歩かせること、歩いた距離やタップなどシーンのイベントを ViewModel に伝えること
 /// タップを受け取る `#selector` を使うため、NSObject を継承している
 final class ARSceneController: NSObject {
-    /// モンスターが出現する、自分からの距離（m）。少し歩かないと届かない距離にする
+    /// モンスターが出現する、自分からの距離（m）。近すぎると見つけにくいので、少し離れた場所に出す
     static let spawnDistanceRange: ClosedRange<Float> = 1.5...3
     /// モンスターが出現する方向の、カメラの正面からのずれの最大（ラジアン）。出たことに気づけるよう、前の方に出す
     static let spawnAngleRange: Float = .pi / 4
@@ -260,12 +260,8 @@ final class ARSceneController: NSObject {
         // 当たるのはモデルの中の部品なので、親をたどって床に置いたモンスターを探す
         var hit = arView.entity(at: recognizer.location(in: arView))
         while let entity = hit {
-            if let (id, monster) = entities.first(where: { $0.value === entity }) {
-                // スマホは床より 1m 以上高い位置にあるので、高さは無視して床の上の距離で測る
-                let camera = arView.cameraTransform.translation
-                let position = monster.position(relativeTo: nil)
-                let distance = simd_distance(SIMD2(camera.x, camera.z), SIMD2(position.x, position.z))
-                viewModel.monsterTapped(id: id, distance: distance)
+            if let id = entities.first(where: { $0.value === entity })?.key {
+                viewModel.monsterTapped(id: id)
                 return
             }
             hit = entity.parent

@@ -22,8 +22,6 @@ final class ARCaptureViewModel {
     static let noticeDuration: Duration = .seconds(2)
     /// 捕獲の結果を出しておく時間。過ぎたら次へ進む
     static let outcomeDisplayDuration: Duration = .seconds(2)
-    /// 捕まえられる距離（m）。床の上での、自分とモンスターの距離がこれより遠いと捕まえられない
-    static let captureDistance: Float = 1.0
     /// モンスターが出るまでに歩く距離（m）。出るたびにこの範囲から選び直す
     static let spawnWalkDistanceRange: ClosedRange<Float> = 5...10
     /// 出現してから逃げるまでの時間。床が見えていない間（別のタブにいる間も）は数えず、見つかり直したら数え直す
@@ -70,7 +68,7 @@ final class ARCaptureViewModel {
         } else if wildMonster == nil {
             "歩き回ってモンスターを探そう"
         } else {
-            "モンスターに近づいて、タップで捕まえよう"
+            "モンスターをタップしてバトルしよう"
         }
     }
 
@@ -106,14 +104,9 @@ final class ARCaptureViewModel {
         startEscapeTimer()
     }
 
-    /// モンスターがタップされたときに ARSceneController から呼ばれる。近ければバトルを始める
-    /// distance は床の上での、自分とモンスターの距離（m）
-    func monsterTapped(id: WildMonster.ID, distance: Float) {
+    /// モンスターがタップされたときに ARSceneController から呼ばれる。離れていても、バトルを始める
+    func monsterTapped(id: WildMonster.ID) {
         guard let target = wildMonster, target.id == id else { return }
-        guard distance <= Self.captureDistance else {
-            showNotice("遠すぎる！もっと近づこう")
-            return
-        }
         escapeTask?.cancel()
         escapeTask = nil
         wildMonster = nil
