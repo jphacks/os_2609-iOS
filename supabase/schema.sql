@@ -42,7 +42,9 @@ create policy "誰でも攻撃を読める" on battle_moves for select using (tr
 create policy "誰でも攻撃を送れる" on battle_moves for insert with check (true);
 
 -- 同じ地点で待っている相手を探して入る。誰もいなければ自分が部屋を作って待つ
--- 2 人が同時に入ろうとしても、for update skip locked で 1 人しか入れない
+-- 同じ地点で 2 人が同時に呼んでも、地点ごとのロックで 1 人ずつ順番に処理する
+-- （順番にしないと、待っている部屋がないときに 2 人とも部屋を作り、別々の部屋で待ち続けてしまう）
+-- ロックはトランザクションが終わると外れるので、後の人には先の人が作った部屋が見える
 -- 2 分以上前に作られた部屋は、待っていた人がもういないとみなして使わない
 create or replace function join_battle(p_location_id text, p_player_id uuid, p_monster text)
 returns battles
@@ -53,6 +55,8 @@ as $$
 declare
   joined battles;
 begin
+  perform pg_advisory_xact_lock(hashtext(p_location_id));
+
   update battles
   set player2_id = p_player_id, player2_monster = p_monster, status = 'playing'
   where id = (
