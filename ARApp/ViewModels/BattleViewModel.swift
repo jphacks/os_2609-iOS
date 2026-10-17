@@ -98,7 +98,8 @@ final class BattleViewModel {
     private func findOpponentIfWanted() {
         guard wantsToWait, phase == .lobby else { return }
         phase = .searching
-        errorMessage = nil
+        // 失敗のメッセージは、ここでは消さずに対戦が始まったときに消す
+        // ここで消すと、失敗が続いている間（通信できないなど）、待ち直すたびにメッセージが消えたり出たりしてチカチカする
         searchTask = Task { [leaveTask] in
             // 前の対戦の片付けが終わる前に始めると、片付けが新しい相手探しの状態まで消してしまう
             await leaveTask?.value
@@ -169,6 +170,7 @@ final class BattleViewModel {
     }
 
     private func startBattle(against opponentMonster: Monster) {
+        errorMessage = nil
         self.opponentMonster = opponentMonster
         state = BattleState(
             Fighter(id: Self.myID, name: myMonster.name, maxHP: BattleEngine.maxHP),
