@@ -8,9 +8,12 @@ import RealityKit
 import ARKit
 
 /// RealityKit の ARView（UIKit の UIView）を SwiftUI で使うためのラッパー
-/// 担当：SwiftUI との橋渡しと、AR セッションの開始・停止
+/// 担当：SwiftUI との橋渡しと、AR セッションの開始
+/// AR セッションは ARCaptureView が持ち、野生のモンスターとのバトルでも同じものを使う（位置の基準と見つけた床を引き継ぐ）
+/// そのため、ARView を外してもセッションは止めない。止めるのは ARCaptureView（別のタブに移ったとき）
 struct ARViewContainer: UIViewRepresentable {
     let viewModel: ARCaptureViewModel
+    let session: ARSession
 
     /// SwiftUI の Coordinator の仕組みを使って、ARSceneController を 1 つだけ作って保持する
     /// （makeUIView より先に 1 回だけ呼ばれ、ARView が存在する間ずっと同じインスタンスが使われる）
@@ -22,6 +25,7 @@ struct ARViewContainer: UIViewRepresentable {
     func makeUIView(context: Context) -> ARView {
         // automaticallyConfigureSession: false にして、セッション設定を自分で行う
         let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+        arView.session = session
 
         // モンスターのテクスチャは落ち着いた色なので、光を約 2.4 倍（2 の 1.25 乗）にして見やすくする
         // 明るすぎる・暗すぎるときはこの値で調整する（0 で元の明るさ、1 で 2 倍、1.5 で約 2.8 倍）
@@ -54,9 +58,10 @@ struct ARViewContainer: UIViewRepresentable {
         context.coordinator.sync(viewModel.shownMonsters)
     }
 
-    /// View が画面から取り除かれるときに呼ばれる。カメラとセンサーを停止する
+    /// View が画面から取り除かれるときに呼ばれる
+    /// セッションは止めない。バトルに切り替えるときは、止めずにそのままバトルの ARView に渡す
+    /// （止めると、再開したときに ARKit が位置を探し直し、置いた場所がずれることがある）
     static func dismantleUIView(_ uiView: ARView, coordinator: ARSceneController) {
         coordinator.stop()
-        uiView.session.pause()
     }
 }

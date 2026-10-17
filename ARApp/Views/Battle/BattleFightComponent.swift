@@ -7,7 +7,7 @@ import SwiftUI
 
 /// 対戦中の画面。後ろの AR の床の上でモンスター同士が戦い、その上に HP やゲージを重ねる
 /// 操作は 2 つだけ。画面をタップすると通常攻撃、左右にスワイプするとよける（必殺技とフィーバーは自動）
-/// 当たったときの音と振動、リーチ・フィーバー・相手の必殺技の予告・勝利の演出もここで出す
+/// 当たったときの音と振動、フィーバーのチャンス・フィーバー・相手の必殺技の予告・勝利の演出もここで出す
 /// 1 回の対戦の中だけで使う見た目の状態（流すアニメーション、続けて当てた回数など）はここに持つ
 /// 対戦が終わるとこの View ごとなくなるので、次の対戦には前の状態が残らない
 struct BattleFightComponent: View {
@@ -18,6 +18,11 @@ struct BattleFightComponent: View {
     let opponentMonster: Monster
     /// バトルの画面が表示されているか。表示されている間だけ AR を動かす
     let isVisible: Bool
+    /// 野生のモンスターとのバトルで、捕獲画面から引き継ぐ AR。ほかのプレイヤーとの対戦なら nil
+    let arHandoff: ARHandoff?
+    /// 野生のモンスターとのバトルで、勝ち負けの演出を見せ終わったときに呼ぶ
+    /// 渡したときは勝敗の結果（BattleResultComponent）を出さない。nil なら結果を出し、ロビーに戻るボタンを置く
+    let onFinish: ((BattleViewModel.Outcome) -> Void)?
 
     /// タップした位置の波紋。クールダウン中でも出るので、タップが届いているかがわかる
     @State private var tapRipple: TapRipple?
@@ -48,8 +53,10 @@ struct BattleFightComponent: View {
     /// HP がこの割合より少なくなったら、立っている間の動きを弱った動きにする
     private static let weakHPRatio = 0.2
     /// 確定してから結果を出すまでの時間（秒）。勝ったときは「VICTORY!」を見せ、負けたときは倒れるところを見せる
-    private static let victoryDuration = 2.2
+    private static let victoryDuration = 3.5
     private static let defeatDuration = 1.2
+    /// 野生のモンスターとのバトルで負けたときに、「捕獲失敗…」を見せる時間（秒）。見せ終わったら捕獲画面に戻る
+    private static let captureFailedDuration = 3.5
     /// この距離（pt）より指を動かしたら、タップではなくスワイプ（よける）にする
     private static let swipeDistance: CGFloat = 30
 
@@ -70,21 +77,21 @@ struct BattleFightComponent: View {
             // 決着が確定したら、少し待ってから結果を出す
             .task(id: viewModel.outcome) {
                 guard let outcome = viewModel.outcome else { return }
-                try? await Task.sleep(for: .seconds(outcome == .won ? Self.victoryDuration : Self.defeatDuration))
-                isResultShown = true
+                try? await Task.sleep(for: .seconds(resultDelay(of: outcome)))
+                guard !Task.isCancelled else { return }
+                if let onFinish {
+                    onFinish(outcome)
+                } else {
+                    isResultShown = true
+                }
             }
             .onChange(of: viewModel.outcome) { onOutcome() }
     }
 
-    /// リーチ・フィーバー・必殺技が始まったときに、音を鳴らしたり溜めの動きを流したりする
+    /// フィーバー・必殺技が始まったときに、音を鳴らしたり溜めの動きを流したりする
     /// 修飾子を 1 つの式に続けすぎると型チェックが終わらなくなるので、body と分けている
     private var screenWithEvents: some View {
         screen
-            .onChange(of: viewModel.reach?.id) {
-                if let reach = viewModel.reach {
-                    BattleSoundPlayer.shared.play(reach.isHot ? .hotReach : .reach)
-                }
-            }
             .onChange(of: viewModel.feverEndsAt) {
                 if viewModel.feverEndsAt != nil {
                     BattleSoundPlayer.shared.play(.feverStart)
@@ -115,7 +122,6 @@ struct BattleFightComponent: View {
             .animation(.easeOut(duration: 0.3), value: viewModel.outcome)
             .animation(.easeOut(duration: 0.3), value: isResultShown)
             .animation(.easeOut(duration: 0.2), value: viewModel.feverEndsAt)
-            .animation(.easeOut(duration: 0.2), value: viewModel.reach?.id)
             // 当たった瞬間に振動させる
             .sensoryFeedback(trigger: impactOnOpponent?.id) { (_: UUID?, _: UUID?) -> SensoryFeedback? in
                 impactFeedback
@@ -123,9 +129,6 @@ struct BattleFightComponent: View {
             // フィーバーが始まったとき、勝ったときは成功の振動、相手の必殺技の予告では警告の振動
             .sensoryFeedback(.success, trigger: viewModel.feverEndsAt) { (_: Date?, endsAt: Date?) -> Bool in
                 endsAt != nil
-            }
-            .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.reach?.id) { (_: UUID?, id: UUID?) -> Bool in
-                id != nil
             }
             .sensoryFeedback(.warning, trigger: viewModel.incomingDanger?.id) { (_: UUID?, id: UUID?) -> Bool in
                 id != nil
@@ -179,13 +182,12 @@ struct BattleFightComponent: View {
     private var layout: some View {
         VStack(spacing: 16) {
             // 1. 上部：相手の名前と HP
-            StatBarComponent(title: opponent.name, value: opponent.hp, maxValue: opponent.maxHP, color: .red)
-                .padding(12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            StatBarComponent(title: opponent.name, value: opponent.hp, maxValue: opponent.maxHP, color: BattleStyle.pink)
+                .battlePanel(accent: BattleStyle.pink)
 
             // 2. 中央：後ろの AR の床の上で戦うモンスターが見えるように空けておく。右上に、続けて当てた回数を出す
             // 回数を出していない間も場所を取るように、透明な View に重ねる（ComboComponent は回数が少ないと空になる）
-            // へとへとで休憩している間は、下の方に「へとへと…」と出す
+            // 下の方に、スタミナが減ってきたら「ハァハァ…」、へとへとで休憩している間は「へとへと…」と出す
             Color.clear
                 .overlay(alignment: .topTrailing) {
                     ComboComponent(count: comboCount)
@@ -193,22 +195,14 @@ struct BattleFightComponent: View {
                 .overlay(alignment: .bottom) {
                     if viewModel.isResting {
                         RestComponent()
+                    } else {
+                        BreathComponent(stamina: viewModel.stamina)
                     }
                 }
 
-            // 3. 下部：自分の HP、スタミナ、必殺技ゲージ、フィーバーゲージ
-            VStack(spacing: 8) {
-                StatBarComponent(title: me.name, value: me.hp, maxValue: me.maxHP, color: .green)
-                StaminaBarComponent(stamina: viewModel.stamina, isResting: viewModel.isResting)
-                StatBarComponent(
-                    title: "必殺技ゲージ（満タンで発動）",
-                    value: me.specialGauge,
-                    maxValue: Fighter.specialGaugeMax,
-                    color: .yellow
-                )
-            }
-            .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            // 3. 下部：自分の HP（スタミナと必殺技ゲージは、出さなくても遊べるので出さない）
+            StatBarComponent(title: me.name, value: me.hp, maxValue: me.maxHP, color: BattleStyle.lime)
+                .battlePanel(accent: BattleStyle.lime)
         }
         .padding()
         .background {
@@ -225,7 +219,8 @@ struct BattleFightComponent: View {
                 myDodge: viewModel.lastDodge,
                 isFeverActive: viewModel.feverEndsAt != nil,
                 isVictory: viewModel.outcome == .won,
-                isVisible: isVisible
+                isVisible: isVisible,
+                arHandoff: arHandoff
             )
             // 攻撃を受けたら、カメラの映像ごと揺らす（視差効果を減らす設定のときは揺らさない）
             .shake(trigger: reduceMotion ? nil : viewModel.lastHitOnMe?.id)
@@ -304,10 +299,10 @@ struct BattleFightComponent: View {
                 DangerComponent(isDodgeFailed: viewModel.lastFailedDodge?.dangerID == danger.id)
                     .id(danger.id)
             }
-            // フィーバーのリーチ。スロットが回っている間も攻撃できるよう、タップは下に通す
-            if let reach = viewModel.reach {
-                ReachComponent(reach: reach)
-                    .id(reach.id)
+            // フィーバーのチャンス。帯が出ている間も攻撃できるよう、タップは下に通す（音と振動は ChanceComponent が出す）
+            if let chance = viewModel.chance {
+                ChanceComponent(chance: chance)
+                    .id(chance.id)
             }
             // 必殺技をよけた・よけられた
             if let hit = lastDodgedHit {
@@ -330,8 +325,20 @@ struct BattleFightComponent: View {
                 } else if outcome == .won {
                     VictoryComponent()
                         .transition(.opacity)
+                } else if onFinish != nil {
+                    // 野生のモンスターとのバトルでは、負けたら逃げられる。勝敗の結果の画面の代わりに出す
+                    CaptureFailedComponent(monsterName: opponent.name)
+                        .transition(.opacity)
                 }
             }
+        }
+    }
+
+    /// 決着が確定してから、結果を出す（野生のモンスターとのバトルでは捕獲画面に戻る）までの時間（秒）
+    private func resultDelay(of outcome: BattleViewModel.Outcome) -> Double {
+        switch outcome {
+        case .won: Self.victoryDuration
+        case .lost: onFinish == nil ? Self.defeatDuration : Self.captureFailedDuration
         }
     }
 

@@ -17,16 +17,12 @@ struct FeverComponent: View {
 
     var body: some View {
         ZStack {
-            EdgeGlowComponent(color: .yellow, pulses: !reduceMotion, pulseDuration: 0.35)
+            EdgeGlowComponent(color: BattleStyle.yellow, pulses: !reduceMotion, pulseDuration: 0.35)
 
             Text("FEVER!")
-                .font(.system(size: 80, weight: .black, design: .rounded))
-                .italic()
-                .foregroundStyle(
-                    LinearGradient(colors: [.white, .yellow, .orange], startPoint: .top, endPoint: .bottom)
-                )
-                .shadow(color: .orange, radius: 12)
-                .shadow(color: .black.opacity(0.5), radius: 2, y: 2)
+                .font(BattleStyle.display(96))
+                .foregroundStyle(BattleStyle.yellow)
+                .onBand(BattleStyle.pink, slant: 24)
                 .scaleEffect(reduceMotion ? 1 : [2.5, 1, 1.4][bannerPhase])
                 .opacity(bannerPhase == 1 ? 1 : 0)
                 .allowsHitTesting(false)

@@ -22,7 +22,7 @@ struct ContentView: View {
             Tab("捕獲", systemImage: "camera.viewfinder") {
                 ARCaptureView(locationViewModel: locationViewModel, collection: monsterCollection)
             }
-            Tab("バトル", systemImage: "bolt.fill") {
+            Tab("マルチバトル", systemImage: "bolt.fill") {
                 BattleView(service: battleService)
             }
         }
@@ -43,14 +43,14 @@ struct ContentView: View {
         #endif
     }
 
-    /// SupabaseConfig に接続先が書いてあれば Supabase で対戦し、なければ CPU が相手になるダミーを使う
-    /// 【開発用】ここで DummyBattleService を使うのは開発中だけ。リリースするときは SupabaseBattleService だけにする
-    /// （DummyBattleService のクラス自体は BattleView の #Preview で使うので残す）
+    /// SupabaseConfig に接続先が書いてあれば Supabase で対戦し、なければ CPU が相手になる
+    /// 【開発用】ここで CPUBattleService を使うのは開発中だけ。リリースするときは SupabaseBattleService だけにする
+    /// （CPUBattleService のクラス自体は、捕獲画面の野生のモンスターとのバトルで使うので残す）
     private static func makeBattleService() -> any BattleService {
         if SupabaseConfig.isConfigured, let url = URL(string: SupabaseConfig.url) {
             SupabaseBattleService(url: url, anonKey: SupabaseConfig.anonKey)
         } else {
-            DummyBattleService()
+            CPUBattleService()
         }
     }
 }

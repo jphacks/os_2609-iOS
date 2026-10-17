@@ -17,10 +17,9 @@ struct DodgeComponent: View {
 
     var body: some View {
         Text(isMine ? "よけた！" : "よけられた…")
-            .font(.system(size: 52, weight: .black, design: .rounded))
-            .italic()
-            .foregroundStyle(isMine ? .green : .gray)
-            .shadow(color: .black.opacity(0.6), radius: 3)
+            .font(BattleStyle.display(56))
+            .foregroundStyle(isMine ? .black : .white)
+            .onBand(isMine ? BattleStyle.lime : .gray)
             .scaleEffect([0.4, 1, 1.2][phase])
             .opacity(phase == 1 ? 1 : 0)
             .allowsHitTesting(false)
@@ -37,5 +36,5 @@ struct DodgeComponent: View {
         DodgeComponent(isMine: true)
         DodgeComponent(isMine: false)
     }
-    .background(.black)
+    .background(.gray)
 }

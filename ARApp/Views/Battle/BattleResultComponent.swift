@@ -11,24 +11,32 @@ struct BattleResultComponent: View {
     let opponentName: String
     let onBack: () -> Void
 
+    private var accent: Color { outcome == .won ? BattleStyle.yellow : BattleStyle.red }
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.4)
                 .ignoresSafeArea()
 
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 Image(systemName: outcome == .won ? "crown.fill" : "xmark.octagon.fill")
-                    .font(.system(size: 64))
-                    .foregroundStyle(outcome == .won ? .yellow : .red)
+                    .font(.system(size: 64, weight: .black))
+                    .foregroundStyle(accent)
                 Text(outcome == .won ? "勝利！" : "敗北…")
-                    .font(.largeTitle.bold())
+                    .font(BattleStyle.display(64))
+                    .foregroundStyle(accent)
                 Text(outcome == .won ? "\(opponentName)に勝った！" : "\(opponentName)に負けてしまった…")
-                Button("ロビーに戻る", systemImage: "arrow.uturn.backward", action: onBack)
                     .font(.headline)
-                    .buttonStyle(.borderedProminent)
+                    .foregroundStyle(.white)
+                Button("ロビーに戻る", action: onBack)
+                    .buttonStyle(BattleButtonStyle(color: accent))
+                    .padding(.top, 8)
             }
             .padding(32)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+            .background(BattleStyle.ink, in: SlantedRectangle(slant: 24))
+            .overlay { SlantedRectangle(slant: 24).stroke(accent, lineWidth: 4) }
+            .hardShadow(offset: 8)
+            .padding(.horizontal, 24)
         }
     }
 }

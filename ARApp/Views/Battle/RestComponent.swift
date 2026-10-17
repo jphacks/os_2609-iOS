@@ -13,16 +13,18 @@ struct RestComponent: View {
     @State private var isTilted = false
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
             Text("へとへと…")
-                .font(.system(size: 36, weight: .black, design: .rounded))
+                .font(BattleStyle.display(40))
             Text("連打しすぎ！ひと休み")
-                .font(.subheadline.bold())
+                .font(BattleStyle.display(16))
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-        .background(.red.opacity(0.75), in: Capsule())
+        .padding(.horizontal, 28)
+        .padding(.vertical, 8)
+        .background(BattleStyle.red, in: SlantedRectangle(slant: 16))
+        .overlay { SlantedRectangle(slant: 16).stroke(.black, lineWidth: 3) }
+        .hardShadow()
         // 上から落ちてきて、ふらふら揺れる
         .offset(y: isDropped || reduceMotion ? 0 : -40)
         .rotationEffect(.degrees(reduceMotion ? 0 : isTilted ? -3 : 3))
