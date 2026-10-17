@@ -56,9 +56,14 @@ struct ContentView: View {
         }
     }
 
-    /// 【開発用】今は DummyWildMonsterService だけ。Supabase 版ができたら、makeBattleService() と同じように切り替える
+    /// SupabaseConfig に接続先が書いてあればプレイヤー全員でモンスターを共有し、なければこの端末の中だけで出すダミーを使う
+    /// 【開発用】ここで DummyWildMonsterService を使うのは開発中だけ。リリースするときは SupabaseWildMonsterService だけにする
     private static func makeWildMonsterService() -> any WildMonsterService {
-        DummyWildMonsterService()
+        if SupabaseConfig.isConfigured, let url = URL(string: SupabaseConfig.url) {
+            SupabaseWildMonsterService(url: url, anonKey: SupabaseConfig.anonKey)
+        } else {
+            DummyWildMonsterService()
+        }
     }
 }
 

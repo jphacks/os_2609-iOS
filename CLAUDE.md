@@ -27,7 +27,7 @@ ARApp/
 │   ├── Capture/  AR 捕獲画面
 │   │   └── AR/   ARView まわり（RealityKit / ARKit を扱うのはここだけ）
 │   └── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル）
-├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦）
+├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦とモンスターの共有）
 └── Resources/    アプリに同梱するファイル
     └── Models/   モンスターの 3D モデル（USDZ）。Kenney「Cube Pets」（CC0）を OBJ から変換したもの
 ```
@@ -85,9 +85,10 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
   - xcconfig はターゲットのビルド設定に付ける。プロジェクト全体に付けると、Xcode 27.2 beta が実行のたびに Team ID を pbxproj に書き戻す。
 - デプロイメントターゲットは iOS 26.2。デフォルトのアクター隔離は `MainActor`。
 - AR は実機でのみ動作する。シミュレータでは非対応メッセージが表示される。
-- 対戦は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/schema.sql`。
+- 対戦と、会場に出現するモンスターの共有は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/` にある。
+  - 対戦は `supabase/schema.sql`、モンスターの出現と捕獲は `supabase/wild_monsters.sql`。別のファイルなので、片方を実行し直してももう片方のデータは消えない。
   - 接続先（URL と anon key）は `Resources/SupabaseSecrets.plist` に書く。公開リポジトリなので `.gitignore` 済みで、コミットしない。ひな形は `supabase/SupabaseSecrets.example.plist`。
-  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` を使う。
+  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` と、端末の中だけでモンスターを出す `DummyWildMonsterService` を使う。
   - `service_role`（secret）の鍵はアプリにもリポジトリにも入れない。
 
 ## ビルド確認
