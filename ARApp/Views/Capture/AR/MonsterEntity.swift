@@ -8,7 +8,7 @@ import RealityKit
 /// モンスターの 3D の見た目を作る
 /// 担当：見た目だけ。配置する場所やタイミングは ARSceneController が決める
 enum MonsterEntity {
-    /// モンスターの 3D モデル（USDZ）を読み込み、`monster.size` の大きさに合わせる
+    /// モンスターの 3D モデル（USDZ）を読み込み、`monster.size` の大きさに合わせて、立っているアニメーションを流す
     /// ファイルの読み込みには時間がかかるので async になっている
     static func make(from monster: Monster) async -> Entity {
         do {
@@ -21,6 +21,8 @@ enum MonsterEntity {
             if height > 0 {
                 model.scale = .init(repeating: monster.size / height)
             }
+            // アニメーションを流さないと、腕を広げた姿勢のまま固まって見える
+            MonsterAnimation.idle.playRepeating(on: model)
             return model
         } catch {
             // 【開発用】原因を調べるためのログ。リリースするときに消してよい
