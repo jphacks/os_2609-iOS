@@ -12,6 +12,7 @@ struct BattleFightComponent: View {
     let viewModel: BattleViewModel
     let me: Fighter
     let opponent: Fighter
+    let myMonster: Monster
     let opponentMonster: Monster
     /// バトルの画面が表示されているか。表示されている間だけ AR を動かす
     let isVisible: Bool
@@ -81,7 +82,7 @@ struct BattleFightComponent: View {
         .padding()
         .background {
             BattleArenaComponent(
-                myMonster: viewModel.myMonster,
+                myMonster: myMonster,
                 opponentMonster: opponentMonster,
                 myIdle: idleAnimation(of: me),
                 opponentIdle: idleAnimation(of: opponent),
@@ -132,10 +133,10 @@ struct BattleFightComponent: View {
             guard let hit = viewModel.lastHitOnOpponent, let opponent = viewModel.opponent else { return }
             if hit.isSpecial {
                 lastSpecialHitOnOpponent = hit
-                mySpecialEndsAt = .now + Self.specialDuration(of: viewModel.myMonster)
-                myAnimation = attackAnimation(of: viewModel.myMonster, hit: hit)
+                mySpecialEndsAt = .now + Self.specialDuration(of: myMonster)
+                myAnimation = attackAnimation(of: myMonster, hit: hit)
             } else if Date.now >= mySpecialEndsAt {
-                myAnimation = attackAnimation(of: viewModel.myMonster, hit: hit)
+                myAnimation = attackAnimation(of: myMonster, hit: hit)
             }
             if opponent.hp == 0 || Date.now >= opponentSpecialEndsAt {
                 opponentAnimation = reactionAnimation(hp: opponent.hp, hit: hit)

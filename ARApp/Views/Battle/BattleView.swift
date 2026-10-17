@@ -36,6 +36,7 @@ struct BattleView: View {
                 viewModel: viewModel,
                 me: me,
                 opponent: opponent,
+                myMonster: viewModel.myMonster,
                 opponentMonster: opponentMonster,
                 isVisible: isVisible
             )
