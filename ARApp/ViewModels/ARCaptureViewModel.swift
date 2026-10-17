@@ -33,6 +33,12 @@ final class ARCaptureViewModel {
     /// 捕獲の結果を出してから次へ進むまで待つタスク
     private var outcomeTask: Task<Void, Never>?
 
+    private let collection: any MonsterCollection
+
+    init(collection: any MonsterCollection) {
+        self.collection = collection
+    }
+
     /// 画面の上に出す案内。モンスターを出していないときは nil
     var statusMessage: String? {
         guard let encounter else { return nil }
@@ -67,6 +73,9 @@ final class ARCaptureViewModel {
             return
         }
         captureOutcome = won ? .success(opponent) : .failure(opponent)
+        if won {
+            collection.add(opponent)
+        }
 
         outcomeTask?.cancel()
         outcomeTask = Task {

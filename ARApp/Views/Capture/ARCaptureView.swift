@@ -9,10 +9,15 @@ import ARKit
 /// AR 捕獲画面。カメラ映像の上に状態メッセージと現在地を重ねる
 struct ARCaptureView: View {
     let locationViewModel: LocationViewModel
-    @State private var viewModel = ARCaptureViewModel()
+    @State private var viewModel: ARCaptureViewModel
     /// この画面が表示されているか
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
+
+    init(locationViewModel: LocationViewModel, collection: any MonsterCollection) {
+        self.locationViewModel = locationViewModel
+        _viewModel = State(initialValue: ARCaptureViewModel(collection: collection))
+    }
 
     var body: some View {
         // ワールドトラッキングは A9 以降のチップを搭載した実機でのみ動作する（シミュレータは非対応）

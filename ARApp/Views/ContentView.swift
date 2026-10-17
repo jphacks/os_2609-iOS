@@ -11,6 +11,8 @@ struct ContentView: View {
     /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
     @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
     @State private var battleService = Self.makeBattleService()
+    /// 捕まえたモンスターの保存先。図鑑や編成でも同じものを使うので、アプリ全体で 1 つだけ作る
+    @State private var monsterCollection = SwiftDataMonsterCollection()
 
     var body: some View {
         TabView {
@@ -18,7 +20,7 @@ struct ContentView: View {
                 MapView(locationViewModel: locationViewModel)
             }
             Tab("捕獲", systemImage: "camera.viewfinder") {
-                ARCaptureView(locationViewModel: locationViewModel)
+                ARCaptureView(locationViewModel: locationViewModel, collection: monsterCollection)
             }
             Tab("バトル", systemImage: "bolt.fill") {
                 BattleView(locationViewModel: locationViewModel, service: battleService)
