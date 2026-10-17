@@ -5,6 +5,7 @@
 
 import Foundation
 import Observation
+import CoreMotion
 
 /// BLE によるチェックポイント推定の信頼度
 enum LocationConfidence {
@@ -33,6 +34,12 @@ final class LocationViewModel {
     static let updateInterval: TimeInterval = 0.5
     /// この時間窓で受信できなかったビーコンの比較用 RSSI
     static let missingRSSI = -100
+    /// 停止後、歩行中に採取した RSSI を使わずに再測定する時間（秒）
+    static let stationaryMeasurementDuration: TimeInterval = 3
+    /// 最後に動きを検出してから「停止」と見なすまでの時間（秒）
+    static let stationaryDelay: TimeInterval = 1.5
+    /// userAcceleration の大きさ（G）がこの値以上なら移動と判定する
+    static let movementAccelerationThreshold = 0.035
 
     /// 推定した最寄りチェックポイント
     private(set) var currentLocation: Location?
@@ -45,15 +52,34 @@ final class LocationViewModel {
     private(set) var nearestBeacon: String?
     /// 現在のチェックポイント推定の信頼度
     private(set) var confidence: LocationConfidence = .unavailable
+    /// 加速度センサーから、現在ユーザーが移動中と判断されているか
+    private(set) var isMoving = false
+    /// 停止後の RSSI 平滑化を行っている途中か
+    private(set) var isPreparingEstimate = false
 
     var statusMessage: String {
+        if isMoving {
+            return "移動中です。現在地を知る場合は止まってください"
+        }
+        if isPreparingEstimate, !currentRSSI.isEmpty {
+            return "停止を確認しました。現在地を測定中…"
+        }
         guard let currentLocation else { return "ビーコンを探しています…" }
         return "推定地点：\(currentLocation.name)（信頼度：\(confidence.label)）"
     }
 
     private let scanner: any BeaconScanner
+    private let motionManager = CMMotionManager()
+    private let motionQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.arapp.location-motion"
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }()
     private var samples: [String: [RSSISample]] = [:]
     private var updateTask: Task<Void, Never>?
+    private var lastMotionDetectedAt: Date?
+    private var stationaryMeasurementStartedAt: Date?
 
     init(scanner: any BeaconScanner) {
         self.scanner = scanner
@@ -61,10 +87,12 @@ final class LocationViewModel {
 
     func start() {
         guard updateTask == nil else { return }
+        beginStationaryMeasurement()
         scanner.onReceive = { [weak self] beaconName, rssi in
             self?.record(beaconName: beaconName, rssi: rssi)
         }
         scanner.start()
+        startMotionDetection()
 
         updateTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -78,21 +106,31 @@ final class LocationViewModel {
     func stop() {
         scanner.stop()
         scanner.onReceive = nil
+        motionManager.stopDeviceMotionUpdates()
         updateTask?.cancel()
         updateTask = nil
         samples = [:]
+        lastMotionDetectedAt = nil
+        stationaryMeasurementStartedAt = nil
+        isMoving = false
+        isPreparingEstimate = false
         resetEstimate()
     }
 
     /// ビーコンを受信するたびに、時間付きで記録する
     private func record(beaconName: String, rssi: Int) {
-        guard Location.beaconIDs.contains(beaconName) else { return }
+        // 歩行中の電波強度は推定に混ぜない。停止後に新たに採取した値だけを使う
+        guard !isMoving, Location.beaconIDs.contains(beaconName) else { return }
         samples[beaconName, default: []].append(RSSISample(value: rssi, receivedAt: .now))
     }
 
     /// 時間窓に残る RSSI の中央値から、最寄りチェックポイントと信頼度を更新する
     private func updateEstimate() {
-        let cutoff = Date.now.addingTimeInterval(-Self.smoothingWindow)
+        updateMovementState()
+        guard !isMoving else { return }
+
+        let now = Date.now
+        let cutoff = now.addingTimeInterval(-Self.smoothingWindow)
         samples = samples.reduce(into: [:]) { kept, entry in
             let recent = entry.value.filter { $0.receivedAt >= cutoff }
             if !recent.isEmpty {
@@ -103,6 +141,13 @@ final class LocationViewModel {
         currentRSSI = Dictionary(uniqueKeysWithValues: samples.compactMap { beaconName, values in
             Self.median(values.map(\.value)).map { (beaconName, $0) }
         })
+
+        guard let stationaryMeasurementStartedAt,
+              now.timeIntervalSince(stationaryMeasurementStartedAt) >= Self.stationaryMeasurementDuration
+        else {
+            return
+        }
+        isPreparingEstimate = false
 
         guard !currentRSSI.isEmpty else {
             resetEstimate()
@@ -135,6 +180,59 @@ final class LocationViewModel {
             margin: nextBestError - best.meanAbsoluteError,
             receivedBeaconCount: currentRSSI.count
         )
+    }
+
+    /// 端末の加速度から歩行・端末移動を検出する
+    private func startMotionDetection() {
+        guard motionManager.isDeviceMotionAvailable else { return }
+
+        motionManager.deviceMotionUpdateInterval = 0.1
+        motionManager.startDeviceMotionUpdates(to: motionQueue) { [weak self] motion, error in
+            guard error == nil, let acceleration = motion?.userAcceleration else { return }
+            let magnitude = sqrt(
+                acceleration.x * acceleration.x
+                    + acceleration.y * acceleration.y
+                    + acceleration.z * acceleration.z
+            )
+
+            Task { @MainActor [weak self] in
+                self?.recordMotionAcceleration(magnitude)
+            }
+        }
+    }
+
+    /// 閾値以上の加速度を受け取った時点で推定を無効化する
+    private func recordMotionAcceleration(_ magnitude: Double) {
+        guard magnitude >= Self.movementAccelerationThreshold else { return }
+
+        lastMotionDetectedAt = .now
+        guard !isMoving else { return }
+
+        isMoving = true
+        stationaryMeasurementStartedAt = nil
+        isPreparingEstimate = false
+        samples = [:]
+        resetEstimate()
+    }
+
+    /// 一定時間動きがなければ、停止後の RSSI を改めて集め始める
+    private func updateMovementState() {
+        guard isMoving,
+              let lastMotionDetectedAt,
+              Date.now.timeIntervalSince(lastMotionDetectedAt) >= Self.stationaryDelay
+        else {
+            return
+        }
+
+        isMoving = false
+        beginStationaryMeasurement()
+    }
+
+    private func beginStationaryMeasurement() {
+        samples = [:]
+        stationaryMeasurementStartedAt = .now
+        isPreparingEstimate = true
+        resetEstimate()
     }
 
     private func resetEstimate() {

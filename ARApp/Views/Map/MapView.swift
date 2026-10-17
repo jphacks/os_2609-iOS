@@ -13,6 +13,7 @@ struct MapView: View {
         VStack(spacing: 16) {
             Text(locationViewModel.statusMessage)
                 .font(.headline)
+                .foregroundStyle(locationViewModel.isMoving ? .orange : .primary)
 
             IndoorMapComponent(
                 locations: Location.registered,
@@ -33,7 +34,10 @@ private struct LocationSignalComponent: View {
 
     var body: some View {
         HStack {
-            Label(viewModel.nearestBeacon ?? "ビーコン未検出", systemImage: "dot.radiowaves.left.and.right")
+            Label(
+                viewModel.isMoving ? "停止後に位置を測定します" : (viewModel.nearestBeacon ?? "ビーコン未検出"),
+                systemImage: viewModel.isMoving ? "figure.walk" : "dot.radiowaves.left.and.right"
+            )
             Spacer()
             Text("信頼度：\(viewModel.confidence.label)")
                 .foregroundStyle(confidenceColor)
