@@ -53,10 +53,13 @@ SwiftUI の決まりとしての名前ではなく、役割がわかる名前を
 
 RealityKit を扱うのは `Views/Capture/AR`、`Views/Battle/AR`、`Views/Monster`、それに 3D のモンスターを表示する画面の部品だけにする。
 
+RealityKit の画面はアプリの中で ARView だけにする（RealityView は使わない）。ARView が動いている間や作る直前に RealityKit の画面がもう 1 つあると、AR が真っ黒になったり床に置けなくなったりする。カメラ映像なしで 3D のモンスターを出すときは、SceneKit で描く `MonsterModelComponent` を使う。
+
 | ファイル | 担当 |
 |---|---|
 | `MonsterEntity` | モデルを読み込んで高さを合わせ、`MonsterAnimator` を付けて立っているアニメーションを流す。配置する場所やタイミングは決めない |
 | `MonsterAnimator` | アニメーションを切り替える。`model.monsterAnimator?.loop(.walk)` でくり返し、`playOnce(.punch)` で 1 回流して元に戻る。`play(request)` で `MonsterAnimationRequest`（待ってから流す、続けて流すなど）のとおりに流す。`changeLoop(to: .duck)` でくり返すアニメーションを変える（1 回流している途中なら、終わってから）。`freeze(for: 0.2)` で今のポーズのまま少し止める（ヒットストップ）。`MonsterAnimationRequest` の `speed` で流す速さを変えられる |
+| `MonsterModelComponent` | カメラ映像なしで 3D のモンスターを 1 体出す（SceneKit。アニメーションはせず立った姿勢で止める）。指で回せる。捕獲画面の詳細画面とバトル画面の対戦前の画面で使う |
 
 アニメーションの種類と区間は `Models/MonsterAnimation`（14 種類、全モンスター共通）。USDZ に 1 本につないで入っているものを切り出して流すので、別のアニメーションを使うときも USDZ の追加は要らない。
 
