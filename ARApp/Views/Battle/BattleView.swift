@@ -11,6 +11,7 @@ import SwiftUI
 /// 対戦前は BattleLobbyComponent、対戦中は BattleFightComponent を出す（どちらも同じフォルダにある）
 struct BattleView: View {
     @State private var viewModel: BattleViewModel
+    @Environment(\.scenePhase) private var scenePhase
     /// この画面が表示されているか
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
@@ -26,6 +27,13 @@ struct BattleView: View {
                 isVisible = false
                 // 別のタブに移ったら、相手を待つのをやめる（対戦中ならそのまま続ける）
                 viewModel.cancelSearch()
+            }
+            // アプリが閉じられたとき（ホームに戻った、画面を消した）も、相手を待つのをやめて部屋を片付ける
+            // 待ったままにすると、終了しても部屋がしばらく残り、ほかの人がいない相手とつながってしまう
+            .onChange(of: scenePhase) {
+                if scenePhase == .background {
+                    viewModel.cancelSearch()
+                }
             }
     }
 
