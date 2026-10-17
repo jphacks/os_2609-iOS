@@ -37,8 +37,6 @@ final class ARSceneController: NSObject {
     private weak var arView: ARView?
     /// モンスターを置く床のアンカー。モンスターはすべてこの子にする
     private var floorAnchor: AnchorEntity?
-    /// floorAnchor を置いた床（ARKit の平面）の ID。その平面が消えたときに置き直すために使う
-    private var floorPlaneID: UUID?
     /// 毎フレームの更新の購読。歩いた距離を測るのに使う
     private var updateSubscription: Cancellable?
     /// 最後に歩いたとみなした、床の上での自分の位置（ワールド座標の x, z）
@@ -105,13 +103,16 @@ final class ARSceneController: NSObject {
     ///
     /// 床探しを AnchorEntity(.plane(...)) に任せず、見つかっている平面から自分で床を選んで、そこに直接置く
     /// AnchorEntity(.plane(...)) では「種類を判定できないが、カメラより十分低い平面」を床として選べないため
+    ///
+    /// アンカーは平面（ARPlaneAnchor）に結び付けず、見つけたときの床の位置に固定する
+    /// 歩き回ると ARKit は平面をまとめて、元の平面を消すことがある。平面に結び付けると、
+    /// そのたびにモンスターがぷつんと消えてしまう（消えた平面に置き直すと、そのまま表示されなくなる）
     private func placeFloorIfPossible() {
         guard floorAnchor == nil, let arView, let floor = nearestFloor(in: arView) else { return }
 
-        let anchor = AnchorEntity(anchor: floor)
+        let anchor = AnchorEntity(world: floor.transform)
         arView.scene.addAnchor(anchor)
         floorAnchor = anchor
-        floorPlaneID = floor.identifier
         // ViewModel の shownMonsters が変わり、updateUIView から sync が呼ばれてモンスターが置かれる
         viewModel.floorStateChanged(isFound: true)
     }
@@ -161,7 +162,6 @@ final class ARSceneController: NSObject {
         entities.removeAll()
         floorAnchor?.removeFromParent()
         floorAnchor = nil
-        floorPlaneID = nil
         // AR を開始し直すと位置の基準が変わるので、歩いた距離もそこから測り直す
         lastWalkPoint = nil
         viewModel.floorStateChanged(isFound: false)
@@ -297,7 +297,7 @@ final class ARSceneController: NSObject {
     }
 }
 
-/// AR が見つけた平面の変化に合わせて床のアンカーを置き、AR が失敗したり中断されたりしたら開始し直す
+/// AR が平面を見つけたら床のアンカーを置き、AR が失敗したり中断されたりしたら開始し直す
 extension ARSceneController: ARSessionDelegate {
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
         placeFloorIfPossible()
@@ -305,14 +305,6 @@ extension ARSceneController: ARSessionDelegate {
 
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
         // 平面は広がったり、あとから「床」と判定されたりするので、更新のたびにも確かめる
-        placeFloorIfPossible()
-    }
-
-    func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
-        // アンカーを置いた床が消えたら（ほかの平面とまとめられたときなど）、別の床に置き直す
-        // モンスターも一度消えて、新しい床の上に置き直される
-        guard let floorPlaneID, anchors.contains(where: { $0.identifier == floorPlaneID }) else { return }
-        removeFloor()
         placeFloorIfPossible()
     }
 
