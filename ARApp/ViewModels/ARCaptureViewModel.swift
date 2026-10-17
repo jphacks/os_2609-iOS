@@ -3,25 +3,111 @@
 //  ARApp
 //
 
+import Foundation
 import Observation
 
 /// AR 捕獲画面の状態。ARView には触らず、状態だけを持つ
+/// どのモンスターを AR に出すかはここで決め、3D での配置や動きは ARSceneController が担当する
 @Observable
 final class ARCaptureViewModel {
-    /// 出現させるモンスター（今は一覧からランダムに 1 体。`Monster.all` は空ではない）
-    let monster = Monster.all.randomElement()!
+    /// 「捕まえた！」などのお知らせを表示しておく時間
+    static let noticeDuration: Duration = .seconds(2)
+    /// 捕まえられる距離（m）。床の上での、自分とモンスターの距離がこれより遠いと捕まえられない
+    static let captureDistance: Float = 1.0
 
-    /// モンスターが床に配置されたか。変更は下のメソッド経由でのみ行う
-    private(set) var isMonsterPlaced = false
+    /// モンスターを置く床が見つかったか
+    private(set) var isFloorFound = false
+    /// 「捕まえた！」などのお知らせ。表示し終わったら nil に戻る
+    private(set) var notice: String?
+    /// もう AR に置いたモンスター
+    /// 現在地の推定がぶれて別の地点になっても、捕まえるか逃げるまでは出しておくために覚えておく
+    private var placedIDs: Set<WildMonster.ID> = []
+    /// 捕獲を問い合わせ中のモンスター。返事を待つ間に何度タップされても、1 回だけ問い合わせる
+    private var capturingIDs: Set<WildMonster.ID> = []
 
-    var statusMessage: String {
-        isMonsterPlaced
-            ? "\(monster.name)が現れた！"
-            : "床を映して、ゆっくり動かしてください"
+    private let wildMonsterViewModel: WildMonsterViewModel
+    private let locationViewModel: LocationViewModel
+    private var noticeTask: Task<Void, Never>?
+
+    init(wildMonsterViewModel: WildMonsterViewModel, locationViewModel: LocationViewModel) {
+        self.wildMonsterViewModel = wildMonsterViewModel
+        self.locationViewModel = locationViewModel
     }
 
-    /// モンスターのアンカーが床に固定された（または外れた）ときに ARSceneController から呼ばれる
-    func monsterAnchorStateChanged(isAnchored: Bool) {
-        isMonsterPlaced = isAnchored
+    /// AR に出すモンスター。今いる地点にいるモンスターと、もう置いたモンスター
+    /// ARSceneController はこの一覧に合わせて 3D のモンスターを置いたり消したりする
+    var shownMonsters: [WildMonster] {
+        guard isFloorFound else { return [] }
+        let locationID = locationViewModel.currentLocation?.id
+        return wildMonsterViewModel.wildMonsters.filter {
+            $0.locationID == locationID || placedIDs.contains($0.id)
+        }
+    }
+
+    var statusMessage: String {
+        if let notice {
+            notice
+        } else if !isFloorFound {
+            "床を映して、ゆっくり動かしてください"
+        } else if shownMonsters.isEmpty {
+            "この辺りにはモンスターがいないようだ"
+        } else {
+            "モンスターに近づいて、タップで捕まえよう"
+        }
+    }
+
+    /// 床のアンカーが固定された（または外れた）ときに ARSceneController から呼ばれる
+    func floorStateChanged(isFound: Bool) {
+        isFloorFound = isFound
+        if !isFound {
+            // 床がなくなると置いたモンスターも消えるので、次に床が見つかったときに出し直す
+            placedIDs.removeAll()
+            noticeTask?.cancel()
+            noticeTask = nil
+            notice = nil
+        }
+    }
+
+    /// モンスターを床に置き終わったときに ARSceneController から呼ばれる
+    func monsterPlaced(id: WildMonster.ID) {
+        placedIDs.insert(id)
+    }
+
+    /// モンスターがタップされたときに ARSceneController から呼ばれる
+    /// distance は床の上での、自分とモンスターの距離（m）
+    func monsterTapped(id: WildMonster.ID, distance: Float) {
+        guard let target = shownMonsters.first(where: { $0.id == id }),
+              !capturingIDs.contains(id) else { return }
+        guard distance <= Self.captureDistance else {
+            showNotice("遠すぎる！もっと近づこう")
+            return
+        }
+
+        // 捕獲は早い者勝ちなので、捕まえられたかは Service に問い合わせて決める
+        capturingIDs.insert(id)
+        Task {
+            defer { capturingIDs.remove(id) }
+            do {
+                if try await wildMonsterViewModel.capture(id: id) {
+                    showNotice("\(target.monster.name)を捕まえた！")
+                } else {
+                    showNotice("ほかの人に先を越された…")
+                }
+                placedIDs.remove(id)
+            } catch {
+                showNotice("通信に失敗しました。もう一度タップしてください")
+            }
+        }
+    }
+
+    private func showNotice(_ message: String) {
+        // 続けて表示するときは、前の表示を消すタイマーを止めて新しいお知らせに変える
+        noticeTask?.cancel()
+        notice = message
+        noticeTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.noticeDuration)
+            guard let self, !Task.isCancelled else { return }
+            self.notice = nil
+        }
     }
 }

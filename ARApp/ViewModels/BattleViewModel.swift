@@ -7,14 +7,14 @@ import Foundation
 import Observation
 
 /// 対戦画面の状態と、バトルの進行
-/// 同じ地点にいる相手とマッチングし、お互いにタップで攻撃し合う
+/// 「バトルする」を押した人どうしをマッチングし（場所は問わない）、お互いにタップで攻撃し合う
 /// 自分の行動はすぐに反映して相手に送り、相手の行動は届いた順に反映する（どちらも BattleEngine で計算する）
 @Observable
 final class BattleViewModel {
     enum Phase {
-        /// 対戦相手を探す前
+        /// 対戦相手を待っていない（「バトルする」を押す前）
         case lobby
-        /// 対戦相手を探している
+        /// 対戦相手を待っている
         case searching
         /// 相手探しをやめて、片付けが終わるのを待っている
         case cancellingSearch
@@ -43,12 +43,14 @@ final class BattleViewModel {
     /// 次の対戦で使う自分のモンスター
     /// 【仮】今はランダム。捕まえたモンスターから選べるようにしたら、ここと leaveBattle() の選び直しを置き換える
     private(set) var myMonster = Monster.all.randomElement()!
+    /// 対戦中の相手のモンスター。マッチングするまでは nil
+    private(set) var opponentMonster: Monster?
     private(set) var phase = Phase.lobby
     /// 対戦中の状態。マッチングするまでは nil
     private(set) var state: BattleState?
     /// 確定した決着。決着がついていない、またはまだ確定していなければ nil
     private(set) var outcome: Outcome?
-    /// 通信に失敗したときに出すメッセージ
+    /// 対戦できなかったとき（通信の失敗、相手が抜けた）に出すメッセージ
     private(set) var errorMessage: String?
     /// 最後に相手へ当たった攻撃。View はこれが変わるたびに演出を流す
     private(set) var lastHitOnOpponent: Hit?
@@ -61,6 +63,8 @@ final class BattleViewModel {
     private var searchTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
     private var finishTask: Task<Void, Never>?
+    /// 対戦をやめたときの片付け。次の相手探しは、これが終わってから始める
+    private var leaveTask: Task<Void, Never>?
 
     init(service: any BattleService) {
         self.service = service
@@ -69,14 +73,18 @@ final class BattleViewModel {
     var me: Fighter? { state?.fighters[Self.myID] }
     var opponent: Fighter? { state?.fighters[Self.opponentID] }
 
-    /// 同じ地点にいる対戦相手を探す
-    func findOpponent(locationID: String) {
+    /// 「バトルする」が押されたときに呼ぶ。対戦相手を探し、誰も待っていなければ相手が来るまで待つ
+    func findOpponent() {
         guard phase == .lobby else { return }
         phase = .searching
         errorMessage = nil
-        searchTask = Task {
+        searchTask = Task { [leaveTask] in
+            // 前の対戦の片付けが終わる前に始めると、片付けが新しい相手探しの状態まで消してしまう
+            await leaveTask?.value
+            // 片付けを待っている間に「やめる」が押されていたら、相手を探さない
+            guard !Task.isCancelled else { return }
             do {
-                let opponentMonster = try await service.findOpponent(locationID: locationID, monster: myMonster)
+                let opponentMonster = try await service.findOpponent(monster: myMonster)
                 guard !Task.isCancelled else { return }
                 startBattle(against: opponentMonster)
             } catch {
@@ -88,9 +96,10 @@ final class BattleViewModel {
         }
     }
 
-    /// 対戦相手を探すのをやめる
+    /// 「やめる」が押されたとき、またはバトルの画面が隠れたときに呼ぶ。対戦相手を探すのをやめる
     /// 片付けが終わってからロビーに戻る
     /// 終わる前に次の相手探しを始めると、前の片付けが新しい相手探しの状態まで消してしまうため
+    /// 相手を探していなければ（対戦中など）何もしない
     func cancelSearch() {
         guard phase == .searching, let searchTask else { return }
         phase = .cancellingSearch
@@ -117,22 +126,30 @@ final class BattleViewModel {
         perform(.specialAttack)
     }
 
-    /// 対戦をやめてロビーに戻る。次の対戦では別のモンスターを使う
+    /// 結果を見終わったときに呼ぶ。ロビーに戻る。次の対戦では別のモンスターを使う
     func leaveBattle() {
+        reset()
+        myMonster = Monster.all.randomElement()!
+    }
+
+    /// 対戦や相手探しをやめて、ロビーの状態に戻す
+    /// 自分のモンスターはここでは選び直さない（対戦できなかったときは、同じモンスターでやり直す）
+    private func reset() {
         searchTask?.cancel()
         receiveTask?.cancel()
         finishTask?.cancel()
         finishTask = nil
-        Task { await service.leave() }
+        leaveTask = Task { await service.leave() }
         state = nil
+        opponentMonster = nil
         outcome = nil
         lastHitOnOpponent = nil
         lastHitOnMe = nil
-        myMonster = Monster.all.randomElement()!
         phase = .lobby
     }
 
     private func startBattle(against opponentMonster: Monster) {
+        self.opponentMonster = opponentMonster
         state = BattleState(
             Fighter(id: Self.myID, name: myMonster.name, maxHP: BattleEngine.maxHP),
             Fighter(id: Self.opponentID, name: opponentMonster.name, maxHP: BattleEngine.maxHP)
@@ -197,11 +214,11 @@ final class BattleViewModel {
         }
     }
 
-    /// 相手が見つからない・相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る
+    /// 相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る
     private func fail(_ error: Error) {
         // 【開発用】原因を調べるためのログ。リリースするときに消してよい
         print("対戦の通信に失敗しました: \(error)")
-        leaveBattle()
+        reset()
         errorMessage = "対戦できませんでした。もう一度お試しください"
     }
 }

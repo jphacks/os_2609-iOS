@@ -35,13 +35,17 @@ struct ARViewContainer: UIViewRepresentable {
         arView.environment.lighting.intensityExponent = 1.25
         arView.session.run(configuration)
 
-        context.coordinator.placeMonster(in: arView)
+        context.coordinator.start(in: arView)
 
         return arView
     }
 
-    /// SwiftUI の状態が変わったときに呼ばれる（今は更新するものがない）
-    func updateUIView(_ uiView: ARView, context: Context) {}
+    /// SwiftUI の状態が変わったときに呼ばれる
+    /// ここで読んだ ViewModel のプロパティ（shownMonsters）が変わるたびに、SwiftUI がもう一度呼んでくれる
+    /// shownMonsters は現在地や会場のモンスターから計算しているので、それらが変わったときも呼ばれる
+    func updateUIView(_ uiView: ARView, context: Context) {
+        context.coordinator.sync(viewModel.shownMonsters)
+    }
 
     /// View が画面から取り除かれるときに呼ばれる。カメラとセンサーを停止する
     static func dismantleUIView(_ uiView: ARView, coordinator: ARSceneController) {

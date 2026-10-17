@@ -25,9 +25,11 @@ ARApp/
 ├── Views/        SwiftUI の View。ContentView 以外は機能ごとのフォルダに置く
 │   ├── Map/      マップ画面（屋内マップ、現在地）
 │   ├── Capture/  AR 捕獲画面
-│   │   └── AR/   ARView まわり（RealityKit / ARKit を扱うのはここだけ）
-│   └── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル）
-├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦）
+│   │   └── AR/   ARView まわり（ARKit を扱うのは Capture/AR と Battle/AR だけ）
+│   ├── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル。対戦中は AR の床の上で戦う）
+│   │   └── AR/   バトル画面の ARView まわり
+│   └── Monster/  3D モンスターの見た目とアニメーション（捕獲画面とバトル画面で共通）
+├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦とモンスターの共有）
 └── Resources/    アプリに同梱するファイル
     └── Models/   モンスターの 3D モデル（USDZ）。Quaternius「Ultimate Monsters」（CC0）を glTF から変換したもの
 ```
@@ -40,10 +42,23 @@ ARApp/
 |---|---|
 | `ARViewContainer` | SwiftUI と ARView の橋渡し（`UIViewRepresentable`）、AR セッションの run / pause |
 | `ARSceneController` | アンカーやエンティティの配置、タップなどシーンのイベントを ViewModel に伝える |
-| `MonsterEntity` など | 3D の見た目を作るだけ。配置する場所やタイミングは決めない |
 
 `ARSceneController` は `UIViewRepresentable` の Coordinator として使う（`makeCoordinator()` の戻り値）。
 SwiftUI の決まりとしての名前ではなく、役割がわかる名前を付けている。
+
+バトル画面の `Views/Battle/AR` も同じ分け方にする（`BattleARViewContainer` と `BattleARSceneController`）。
+どのアニメーションを流すかは `BattleView` が `MonsterAnimationRequest` で決め、`BattleARSceneController` はそれを流すだけにする。
+
+### Views/Monster（3D モンスター）
+
+RealityKit を扱うのは `Views/Capture/AR`、`Views/Battle/AR`、`Views/Monster`、それに 3D のモンスターを表示する画面の部品だけにする。
+
+| ファイル | 担当 |
+|---|---|
+| `MonsterEntity` | モデルを読み込んで高さを合わせ、`MonsterAnimator` を付けて立っているアニメーションを流す。配置する場所やタイミングは決めない |
+| `MonsterAnimator` | アニメーションを切り替える。`model.monsterAnimator?.loop(.walk)` でくり返し、`playOnce(.punch)` で 1 回流して元に戻る。`play(request)` で `MonsterAnimationRequest`（待ってから流す、続けて流すなど）のとおりに流す。`changeLoop(to: .duck)` でくり返すアニメーションを変える（1 回流している途中なら、終わってから） |
+
+アニメーションの種類と区間は `Models/MonsterAnimation`（14 種類、全モンスター共通）。USDZ に 1 本につないで入っているものを切り出して流すので、別のアニメーションを使うときも USDZ の追加は要らない。
 
 空のフォルダは作らない。最初のファイルが必要になった時点でフォルダを作る。
 
@@ -87,9 +102,11 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
   - xcconfig はターゲットのビルド設定に付ける。プロジェクト全体に付けると、Xcode 27.2 beta が実行のたびに Team ID を pbxproj に書き戻す。
 - デプロイメントターゲットは iOS 26.2。デフォルトのアクター隔離は `MainActor`。
 - AR は実機でのみ動作する。シミュレータでは非対応メッセージが表示される。
-- 対戦は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/schema.sql`。
+  - バトル画面は、AR を使えなくても対戦（HP やタップ）だけは動くので、`BattleView` の #Preview やシミュレータで確かめられる。モンスターは表示されない。
+- 対戦と、会場に出現するモンスターの共有は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/` にある。
+  - 対戦は `supabase/schema.sql`、モンスターの出現と捕獲は `supabase/wild_monsters.sql`。別のファイルなので、片方を実行し直してももう片方のデータは消えない。
   - 接続先（URL と anon key）は `Resources/SupabaseSecrets.plist` に書く。公開リポジトリなので `.gitignore` 済みで、コミットしない。ひな形は `supabase/SupabaseSecrets.example.plist`。
-  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` を使う。
+  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` と、端末の中だけでモンスターを出す `DummyWildMonsterService` を使う。
   - `service_role`（secret）の鍵はアプリにもリポジトリにも入れない。
 
 ## ビルド確認
