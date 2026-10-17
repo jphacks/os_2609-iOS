@@ -151,10 +151,12 @@ final class BattleViewModel {
     /// 結果を見終わったときに呼ぶ。ロビーに戻り、次の対戦相手を待ち始める。次の対戦では別のモンスターを使う
     func leaveBattle() {
         reset()
+        myMonster = Monster.all.randomElement()!
         findOpponentIfWanted()
     }
 
     /// 対戦や相手探しをやめて、ロビーの状態に戻す
+    /// 自分のモンスターはここでは選び直さない（失敗して待ち直すたびに、ロビーのモンスターが入れ替わってしまうため）
     private func reset() {
         searchTask?.cancel()
         receiveTask?.cancel()
@@ -166,7 +168,6 @@ final class BattleViewModel {
         outcome = nil
         lastHitOnOpponent = nil
         lastHitOnMe = nil
-        myMonster = Monster.all.randomElement()!
         phase = .lobby
     }
 
