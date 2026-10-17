@@ -10,6 +10,8 @@ import SwiftUI
 struct IndoorMapComponent: View {
     let locations: [Location]
     let currentLocation: Location?
+    /// プレイヤーを描く位置。地点と地点の間のこともある
+    let currentPosition: MapPosition?
 
     var body: some View {
         GeometryReader { geometry in
@@ -25,13 +27,16 @@ struct IndoorMapComponent: View {
                 }
 
                 // プレイヤーは一番手前に描く
-                if let currentLocation {
+                if let currentPosition {
                     Image(systemName: "figure.walk.circle.fill")
                         .font(.system(size: 36))
                         .foregroundStyle(.white, .blue)
-                        .position(point(for: currentLocation.position, in: size))
+                        .position(point(for: currentPosition, in: size))
                 }
             }
+            // 位置は推定し直すたびに飛ぶので、少しだけ時間をかけて動かす
+            // 次の測定の間は止めておきたいので、測定時間（2 秒）より十分短くする
+            .animation(.easeInOut(duration: 0.5), value: currentPosition)
         }
         .aspectRatio(3 / 4, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 24))
@@ -64,6 +69,10 @@ private struct LocationMarkerComponent: View {
 }
 
 #Preview {
-    IndoorMapComponent(locations: Location.registered, currentLocation: Location.registered[0])
-        .padding()
+    IndoorMapComponent(
+        locations: Location.registered,
+        currentLocation: Location.registered[0],
+        currentPosition: Location.registered[0].position
+    )
+    .padding()
 }
