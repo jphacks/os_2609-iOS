@@ -16,14 +16,30 @@ struct BattleLobbyComponent: View {
     let errorMessage: String?
     let onFind: (Location) -> Void
     let onCancel: () -> Void
+    /// ときどき手を振るアニメーション
+    @State private var waveAnimation: MonsterAnimationRequest?
+
+    /// 手を振る間隔（秒）
+    private static let waveIntervalRange: ClosedRange<Double> = 4...8
 
     var body: some View {
         VStack(spacing: 20) {
             Text("MONSTER BATTLE")
                 .font(.headline)
 
-            BattleMonsterComponent(monster: myMonster, animation: nil, facing: 0.4)
+            BattleMonsterComponent(monster: myMonster, animation: waveAnimation, facing: 0.4)
                 .frame(width: 240, height: 240)
+                // 画面が表示されている間、ときどき手を振る
+                .task {
+                    while true {
+                        do {
+                            try await Task.sleep(for: .seconds(Double.random(in: Self.waveIntervalRange)))
+                        } catch {
+                            return // 画面が閉じられた
+                        }
+                        waveAnimation = MonsterAnimationRequest(animations: [.wave])
+                    }
+                }
             Text(myMonster.name)
                 .font(.title3.bold())
 

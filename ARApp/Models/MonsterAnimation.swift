@@ -60,4 +60,7 @@ enum MonsterAnimation {
 
     /// 1 回流すのにかかる時間（秒）
     var duration: Double { timeRange.upperBound - timeRange.lowerBound }
+
+    /// 前のアニメーションから切り替えるのにかける時間（秒）。この間は前のアニメーションと混ぜて、ポーズが急に飛ばないようにする
+    static let transitionDuration: Double = 0.2
 }

@@ -21,7 +21,11 @@ struct BattleView: View {
     @State private var isVisible = false
 
     /// 攻撃の動きを流し始めてから、相手に当たるまでの時間（秒）。のけぞりをこの分だけ遅らせる
-    private static let impactDelay = 0.25
+    private static let attackImpactTime = 0.25
+    /// 必殺技を撃つ前の溜めの動き
+    private static let specialCharge = MonsterAnimation.jump
+    /// 決着してから、勝った側が喜び始めるまでの時間（秒）。最後の攻撃の動きを見せてから喜ぶ
+    private static let celebrationDelay = 1.0
 
     init(locationViewModel: LocationViewModel, service: any BattleService) {
         self.locationViewModel = locationViewModel
@@ -135,9 +139,9 @@ struct BattleView: View {
             }
         }
         .overlay {
-            // 必殺技が当たった瞬間、画面全体を光らせる
+            // 必殺技が当たった瞬間（溜めのあと）、画面全体を光らせる
             if let hit = viewModel.lastHitOnOpponent, hit.isSpecial {
-                FlashComponent()
+                FlashComponent(delay: Self.impactDelay(of: hit))
                     .id(hit.id)
             }
         }
@@ -157,12 +161,28 @@ struct BattleView: View {
         .onChange(of: viewModel.lastHitOnOpponent?.id) {
             guard let hit = viewModel.lastHitOnOpponent, let opponent = viewModel.opponent else { return }
             myAnimation = attackAnimation(of: viewModel.myMonster, hit: hit)
-            opponentAnimation = reactionAnimation(hp: opponent.hp)
+            opponentAnimation = reactionAnimation(hp: opponent.hp, hit: hit)
         }
         .onChange(of: viewModel.lastHitOnMe?.id) {
             guard let hit = viewModel.lastHitOnMe, let me = viewModel.me else { return }
             opponentAnimation = attackAnimation(of: opponentMonster, hit: hit)
-            myAnimation = reactionAnimation(hp: me.hp)
+            myAnimation = reactionAnimation(hp: me.hp, hit: hit)
+        }
+        // 決着したら、勝った側が喜ぶ
+        .onChange(of: viewModel.outcome) {
+            guard let outcome = viewModel.outcome, let me = viewModel.me, let opponent = viewModel.opponent else { return }
+            let celebration = MonsterAnimationRequest(animations: [.yes, .wave], delay: Self.celebrationDelay, ending: .repeats)
+            // 確定した勝敗が、この端末の HP と食い違うこともある（ほぼ同時に倒し合ったときなど）
+            // そのときは負けた側がまだ倒れていないので、ここで倒す
+            let defeat = MonsterAnimationRequest(animations: [.death], ending: .staysAtEnd)
+            switch outcome {
+            case .won:
+                myAnimation = celebration
+                if opponent.hp > 0 { opponentAnimation = defeat }
+            case .lost:
+                opponentAnimation = celebration
+                if me.hp > 0 { myAnimation = defeat }
+            }
         }
         // 次の対戦で、前の対戦のアニメーション（倒れたままなど）を流さないように消しておく
         .onDisappear {
@@ -171,16 +191,25 @@ struct BattleView: View {
         }
     }
 
-    /// 攻撃する側のアニメーション
+    /// 攻撃する側のアニメーション。必殺技は、溜めの動きのあとに攻撃する
     private func attackAnimation(of monster: Monster, hit: BattleViewModel.Hit) -> MonsterAnimationRequest {
-        MonsterAnimationRequest(animation: hit.isSpecial ? monster.specialAttack : monster.normalAttack)
+        hit.isSpecial
+            ? MonsterAnimationRequest(animations: [Self.specialCharge, monster.specialAttack])
+            : MonsterAnimationRequest(animations: [monster.normalAttack])
     }
 
     /// 攻撃を受けた側のアニメーション。攻撃が当たるタイミングでのけぞり、HP が 0 になったら倒れたままになる
-    private func reactionAnimation(hp: Int) -> MonsterAnimationRequest {
+    private func reactionAnimation(hp: Int, hit: BattleViewModel.Hit) -> MonsterAnimationRequest {
         hp == 0
-            ? MonsterAnimationRequest(animation: .death, delay: Self.impactDelay, staysAtEnd: true)
-            : MonsterAnimationRequest(animation: .hitReact, delay: Self.impactDelay)
+            ? MonsterAnimationRequest(animations: [.death], delay: Self.impactDelay(of: hit), ending: .staysAtEnd)
+            : MonsterAnimationRequest(animations: [.hitReact], delay: Self.impactDelay(of: hit))
+    }
+
+    /// 攻撃の動きを流し始めてから、相手に当たるまでの時間（秒）。必殺技は溜めの動きの分だけ遅くなる
+    /// 溜めの動きは、終わる少し前（混ぜて切り替える時間）から攻撃の動きに切り替わる
+    private static func impactDelay(of hit: BattleViewModel.Hit) -> Double {
+        let chargeTime = hit.isSpecial ? specialCharge.duration - MonsterAnimation.transitionDuration : 0
+        return chargeTime + attackImpactTime
     }
 }
 

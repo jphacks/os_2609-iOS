@@ -65,16 +65,24 @@ struct FloatingDamageComponent: View {
 }
 
 /// 画面全体が一瞬光って消える（必殺技の演出）
+/// delay 秒待ってから光る。必殺技の溜めの動きが終わって、攻撃が当たるタイミングに合わせる
 struct FlashComponent: View {
-    @State private var isFading = false
+    var delay: Double = 0
+    @State private var isLit = false
 
     var body: some View {
         Color.yellow
-            .opacity(isFading ? 0 : 0.6)
+            // isLit が変わったら、すぐに明るくなってから、ゆっくり消える
+            .phaseAnimator([0, 0.6], trigger: isLit) { content, opacity in
+                content.opacity(opacity)
+            } animation: { opacity in
+                opacity > 0 ? .linear(duration: 0.05) : .easeOut(duration: 0.5)
+            }
             .ignoresSafeArea()
             .allowsHitTesting(false)
-            .onAppear {
-                withAnimation(.easeOut(duration: 0.5)) { isFading = true }
+            .task {
+                try? await Task.sleep(for: .seconds(delay))
+                isLit = true
             }
     }
 }

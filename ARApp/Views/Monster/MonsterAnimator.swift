@@ -12,13 +12,10 @@ import RealityKit
 ///     model.monsterAnimator?.loop(.walk)       // くり返し流す（歩く、立っているなど）
 ///     model.monsterAnimator?.playOnce(.punch)  // 1 回だけ流して、くり返していたアニメーションに戻る
 ///     model.monsterAnimator?.playOnce(.death, staysAtEnd: true)  // 最後のポーズのまま止まる
-///     model.monsterAnimator?.play(request)     // MonsterAnimationRequest のとおりに流す（待ってから流すなど）
+///     model.monsterAnimator?.play(request)     // MonsterAnimationRequest のとおりに流す（待ってから、続けて流すなど）
 ///
 /// 切り替えるときは前のアニメーションと少しの間混ぜて、ポーズが急に飛ばないようにする
 final class MonsterAnimator {
-    /// 前のアニメーションから切り替えるのにかける時間（秒）
-    private static let transitionDuration: TimeInterval = 0.2
-
     private weak var model: Entity?
     /// モデルに入っている、14 種類が 1 本につながったアニメーション。入っていないモデルでは nil で、何も流さない
     private let source: AnimationResource?
@@ -34,16 +31,26 @@ final class MonsterAnimator {
     }
 
     /// MonsterAnimationRequest のとおりにアニメーションを流す
-    /// 待っている間に次の play(_:) が呼ばれたら、前の分は流さない
+    /// 流している途中で次の play(_:) が呼ばれたら、前の分の残りは流さない
     func play(_ request: MonsterAnimationRequest) {
         requestTask?.cancel()
         requestTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: .seconds(request.delay))
+                // 途中のアニメーションは終わりのポーズで止めておき、混ぜ始める時間になったら次を流す
+                for animation in request.animations.dropLast() {
+                    self?.playOnce(animation, staysAtEnd: true)
+                    try await Task.sleep(for: .seconds(animation.duration - MonsterAnimation.transitionDuration))
+                }
             } catch {
                 return
             }
-            self?.playOnce(request.animation, staysAtEnd: request.staysAtEnd)
+            guard let self, let last = request.animations.last else { return }
+            switch request.ending {
+            case .backToLoop: playOnce(last)
+            case .staysAtEnd: playOnce(last, staysAtEnd: true)
+            case .repeats: loop(last)
+            }
         }
     }
 
@@ -64,7 +71,7 @@ final class MonsterAnimator {
         guard !staysAtEnd else { return }
         returnTask = Task { [weak self] in
             // 戻るときも混ぜるので、その時間だけ早めに切り替え始める
-            try? await Task.sleep(for: .seconds(animation.duration - Self.transitionDuration))
+            try? await Task.sleep(for: .seconds(animation.duration - MonsterAnimation.transitionDuration))
             guard let self, !Task.isCancelled else { return }
             self.play(self.looping, repeats: true)
         }
@@ -79,7 +86,7 @@ final class MonsterAnimator {
         // 1 回だけ流すときは、終わったあと最後のポーズを保つ
         definition.fillMode = .forwards
         guard let clip = try? AnimationResource.generate(with: definition) else { return }
-        model.playAnimation(clip, transitionDuration: Self.transitionDuration)
+        model.playAnimation(clip, transitionDuration: MonsterAnimation.transitionDuration)
     }
 }
 
