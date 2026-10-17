@@ -18,10 +18,13 @@ struct BattleArenaComponent: View {
     let hitOnOpponent: BattleViewModel.Hit?
     let hitOnMe: BattleViewModel.Hit?
     let danger: BattleViewModel.Danger?
+    let myDodge: BattleViewModel.Dodge?
     let isFeverActive: Bool
     let isVictory: Bool
     /// 画面が表示されているか。表示されている間だけ ARView を置く
     let isVisible: Bool
+    /// 野生のモンスターとのバトルで、捕獲画面から引き継ぐ AR。ほかのプレイヤーとの対戦なら nil
+    let arHandoff: ARHandoff?
     /// 床にモンスターを置き終わったか。置くまでは「床を映して」と案内する
     @State private var isPlaced = false
 
@@ -36,7 +39,7 @@ struct BattleArenaComponent: View {
                     .multilineTextAlignment(.center)
                     .padding()
             } else if isVisible {
-                // 外すと BattleARViewContainer の dismantleUIView が呼ばれ、セッションが止まる
+                // 外すと BattleARViewContainer の dismantleUIView が呼ばれ、セッションが止まる（捕獲画面から引き継いだセッションは止めない）
                 // ARView は最初から表示する場所の大きさで作る必要があるので、大きさが決まってから置く
                 GeometryReader { proxy in
                     if proxy.size.width > 0, proxy.size.height > 0 {
@@ -51,22 +54,27 @@ struct BattleArenaComponent: View {
                             hitOnOpponent: hitOnOpponent,
                             hitOnMe: hitOnMe,
                             danger: danger,
+                            myDodge: myDodge,
                             isFeverActive: isFeverActive,
                             isVictory: isVictory,
+                            arHandoff: arHandoff,
                             onPlaced: { isPlaced = true }
                         )
                     }
                 }
                 if !isPlaced {
                     Text("床を映すと、モンスターが現れます")
-                        .font(.headline)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .font(BattleStyle.display(20))
+                        .foregroundStyle(.white)
+                        .battlePanel(accent: BattleStyle.cyan)
                 }
             }
         }
         .ignoresSafeArea()
+        // モンスターが現れたら振動させ、画面を見ていなくても気づけるようにする
+        .sensoryFeedback(.warning, trigger: isPlaced) { (_: Bool, isPlaced: Bool) -> Bool in
+            isPlaced
+        }
         // ARView を外すとモンスターもいなくなるので、次に表示したときは床を探すところからやり直す
         .onChange(of: isVisible) {
             if !isVisible { isPlaced = false }

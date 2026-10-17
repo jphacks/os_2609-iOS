@@ -13,9 +13,9 @@ enum MonsterSceneNode {
     /// （止めないと Death から順にすべての動きが流れ、止めて時刻を指定しないと腕を広げた姿勢のまま固まる）
     private static let idlePoseTime: TimeInterval = 3.7
 
-    /// USDZ を読み込み、高さが monster.size になるように縮め、足元の真ん中が原点に来るように置く
+    /// USDZ を読み込み、高さが height（省略すると monster.size）になるように縮め、足元の真ん中が原点に来るように置く
     /// 正面は +Z 方向。読み込めなかったときは nil
-    static func make(from monster: Monster) -> SCNNode? {
+    static func make(from monster: Monster, height targetHeight: Float? = nil) -> SCNNode? {
         guard let url = Bundle.main.url(forResource: monster.modelName, withExtension: "usdz"),
               let scene = try? SCNScene(url: url) else {
             // 【開発用】原因を調べるためのログ。リリースするときに消してよい
@@ -26,10 +26,10 @@ enum MonsterSceneNode {
         let model = SCNNode()
         scene.rootNode.childNodes.forEach(model.addChildNode)
 
-        // モデルは 3〜4m の大きさで作られているので、高さが size になるように縮小する（MonsterEntity と同じ）
+        // モデルは 3〜4m の大きさで作られているので、指定の高さになるように縮小する（MonsterEntity と同じ）
         let (minBounds, maxBounds) = model.boundingBox
         let height = maxBounds.y - minBounds.y
-        let scale = height > 0 ? monster.size / height : 1
+        let scale = height > 0 ? (targetHeight ?? monster.size) / height : 1
         model.scale = SCNVector3(scale, scale, scale)
         model.position = SCNVector3(
             -(minBounds.x + maxBounds.x) / 2 * scale,

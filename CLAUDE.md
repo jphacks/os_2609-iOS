@@ -28,7 +28,8 @@ ARApp/
 │   │   └── AR/   ARView まわり（ARKit を扱うのは Capture/AR と Battle/AR だけ）
 │   ├── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル。対戦中は AR の床の上で戦う）
 │   │   └── AR/   バトル画面の ARView まわり
-│   └── Monster/  3D モンスターの見た目とアニメーション（捕獲画面とバトル画面で共通）
+│   ├── Monster/  3D モンスターの見た目とアニメーション（捕獲画面とバトル画面で共通）
+│   └── Components/ 2 つ以上の画面で使う見た目（例：BattleStyle の色・文字・形）
 ├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦）
 └── Resources/    アプリに同梱するファイル
     └── Models/   モンスターの 3D モデル（USDZ）。Quaternius「Ultimate Monsters」（CC0）を glTF から変換したもの
@@ -41,7 +42,7 @@ ARApp/
 | ファイル | 担当 |
 |---|---|
 | `ARViewContainer` | SwiftUI と ARView の橋渡し（`UIViewRepresentable`）、AR セッションの run / pause |
-| `ARSceneController` | アンカーやエンティティの配置、タップなどシーンのイベントを ViewModel に伝える |
+| `ARSceneController` | アンカーやエンティティの配置、画面の外にいるモンスターを指す矢印、タップなどシーンのイベントを ViewModel に伝える |
 
 `ARSceneController` は `UIViewRepresentable` の Coordinator として使う（`makeCoordinator()` の戻り値）。
 SwiftUI の決まりとしての名前ではなく、役割がわかる名前を付けている。
@@ -53,10 +54,14 @@ SwiftUI の決まりとしての名前ではなく、役割がわかる名前を
 
 RealityKit を扱うのは `Views/Capture/AR`、`Views/Battle/AR`、`Views/Monster`、それに 3D のモンスターを表示する画面の部品だけにする。
 
+RealityKit の画面はアプリの中で ARView だけにする（RealityView は使わない）。ARView が動いている間や作る直前に RealityKit の画面がもう 1 つあると、AR が真っ黒になったり床に置けなくなったりする。カメラ映像なしで 3D のモンスターを出すときは、SceneKit で描く `MonsterModelComponent` を使う。
+
 | ファイル | 担当 |
 |---|---|
 | `MonsterEntity` | モデルを読み込んで高さを合わせ、`MonsterAnimator` を付けて立っているアニメーションを流す。配置する場所やタイミングは決めない |
 | `MonsterAnimator` | アニメーションを切り替える。`model.monsterAnimator?.loop(.walk)` でくり返し、`playOnce(.punch)` で 1 回流して元に戻る。`play(request)` で `MonsterAnimationRequest`（待ってから流す、続けて流すなど）のとおりに流す。`changeLoop(to: .duck)` でくり返すアニメーションを変える（1 回流している途中なら、終わってから）。`freeze(for: 0.2)` で今のポーズのまま少し止める（ヒットストップ）。`MonsterAnimationRequest` の `speed` で流す速さを変えられる |
+| `MonsterModelComponent` | カメラ映像なしで 3D のモンスターを 1 体出す（SceneKit。アニメーションはせず立った姿勢で止める）。指で回せる。捕獲画面の詳細画面とバトル画面の対戦前の画面で使う |
+| `MonsterArrow` | 画面の外にいるモンスターの方向を、画面の端の矢印で示す（UIKit）。ARView の上に置き、毎フレーム `update(pointingAt:in:)` を呼ぶ。捕獲画面とバトル画面で使う |
 
 アニメーションの種類と区間は `Models/MonsterAnimation`（14 種類、全モンスター共通）。USDZ に 1 本につないで入っているものを切り出して流すので、別のアニメーションを使うときも USDZ の追加は要らない。
 
@@ -92,7 +97,9 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
   - 部品：画面の中に置く View。ボタン、ゲージ、カード、HP バー、マーカーなど（例：`IndoorMapComponent`、`StatBarComponent`、`BattleResultComponent`）。`private struct` で同じファイルに置く部品も同じ。
   - `ARViewContainer` は `UIViewRepresentable` の橋渡し役なので例外。
 - AR セッションのライフサイクル（`run` / `pause`）は `ARViewContainer` で管理する（`makeUIView` で run、`dismantleUIView` で pause）。
+  - 例外：捕獲画面の AR セッションは `ARCaptureView` が持ち、野生のモンスターとのバトル（`BattleARViewContainer` に `ARHandoff` で渡す）でも同じものを使う。位置の基準と見つけた床を引き継ぎ、相手を野生のモンスターがいた場所に置くため。ARView を外しても止めず、`ARCaptureView` が別のタブに移ったときに止める。
   - **`TabView` の中で AR を使う画面は、表示中だけ `ARViewContainer` を置く**（`onAppear` / `onDisappear` で表示中かを持つ。例：`ARCaptureView`）。`TabView` は別のタブに切り替えても画面を残すので、そのままでは `dismantleUIView` が呼ばれず、カメラが動き続ける。
+  - 捕獲画面でモンスターをタップすると、`ARCaptureView` の上に `BattleView`（相手は `CPUBattleService` の CPU）を重ねる。捕獲の ARView とバトルの ARView が同時にならないよう、`ARCaptureView` の `arScreen` だけで切り替え、前の画面を外してから少し待って次を置く。
 
 ## プロジェクト設定
 
@@ -105,7 +112,7 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
   - バトル画面は、AR を使えなくても対戦（HP やタップ）だけは動くので、`BattleView` の #Preview やシミュレータで確かめられる。モンスターは表示されない。
 - 対戦は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義は `supabase/schema.sql`。
   - 接続先（URL と anon key）は `Resources/SupabaseSecrets.plist` に書く。公開リポジトリなので `.gitignore` 済みで、コミットしない。ひな形は `supabase/SupabaseSecrets.example.plist`。
-  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` を使う。
+  - plist がない・値が空なら、CPU が相手になる `CPUBattleService` を使う。捕獲画面の野生のモンスターとのバトルも `CPUBattleService` を使う。
   - `service_role`（secret）の鍵はアプリにもリポジトリにも入れない。
 - 捕獲画面のモンスターは、AR の中で歩いた距離に応じて端末の中だけに出る（ほかのプレイヤーとは共有しない。現在地やマップにも依存しない）。
 
