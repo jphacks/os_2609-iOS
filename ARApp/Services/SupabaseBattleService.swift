@@ -105,16 +105,26 @@ final class SupabaseBattleService: BattleService {
         startListening(battleID: row.id)
 
         // 自分が部屋を作った場合は、相手が入ってくるまで（キャンセルされるまで）待ち続ける
+        // 待っている間は、まだ待っていることを定期的に伝える
+        // 下の確認とは別の Task で伝える。同じループで順番に送ると、確認の通信が止まっている間（会場の Wi-Fi が悪いなど）に
+        // 伝えられなくなり、部屋が使われなくなってしまう
+        let keepWaitingTask = Task { [client] in
+            let params = KeepWaitingParams(battleID: row.id)
+            while true {
+                do {
+                    try await Task.sleep(for: .seconds(Self.keepWaitingInterval))
+                } catch {
+                    return // 相手が来た、または待つのをやめた
+                }
+                // 通信が一瞬切れても失敗にせず、次の回で伝える
+                _ = try? await client.rpc("keep_waiting", params: params).execute()
+            }
+        }
+        defer { keepWaitingTask.cancel() }
+
         // Realtime を取りこぼしたときのために、ときどきデータベースも直接見る（購読を始める前に入ってきた場合もここで気づく）
         var nextFetch = Date.now
-        var nextKeepWaiting = Date.now.addingTimeInterval(Self.keepWaitingInterval)
         while opponentMonsterName == nil {
-            if Date.now >= nextKeepWaiting {
-                // 通信が一瞬切れても失敗にせず、次の回で伝える
-                let params = KeepWaitingParams(battleID: row.id)
-                _ = try? await client.rpc("keep_waiting", params: params).execute()
-                nextKeepWaiting = Date.now.addingTimeInterval(Self.keepWaitingInterval)
-            }
             if Date.now >= nextFetch {
                 // 通信が一瞬切れても失敗にせず、次の確認を待つ
                 if let battle = try? await fetchBattle(id: row.id) {
