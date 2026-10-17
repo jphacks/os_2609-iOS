@@ -154,8 +154,12 @@ final class ARSceneController: NSObject {
         // 当たるのはモデルの中の部品なので、親をたどって床に置いたモンスターを探す
         var hit = arView.entity(at: recognizer.location(in: arView))
         while let entity = hit {
-            if let id = entities.first(where: { $0.value === entity })?.key {
-                viewModel.capture(id: id)
+            if let (id, monster) = entities.first(where: { $0.value === entity }) {
+                // スマホは床より 1m 以上高い位置にあるので、高さは無視して床の上の距離で測る
+                let camera = arView.cameraTransform.translation
+                let position = monster.position(relativeTo: nil)
+                let distance = simd_distance(SIMD2(camera.x, camera.z), SIMD2(position.x, position.z))
+                viewModel.monsterTapped(id: id, distance: distance)
                 return
             }
             hit = entity.parent
