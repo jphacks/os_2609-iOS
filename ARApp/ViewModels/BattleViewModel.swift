@@ -131,15 +131,12 @@ final class BattleViewModel {
 
     /// 「バトルする」が押されたときに呼ぶ。対戦相手を探し、誰も待っていなければ相手が来るまで待つ
     func findOpponent() {
-        print("🔍 [Match] 「バトルする」が押された phase=\(phase)") // ⚠️ 開発用（調査中）
         guard phase == .lobby else { return }
         phase = .searching
         errorMessage = nil
         searchTask = Task { [leaveTask] in
             // 前の対戦の片付けが終わる前に始めると、片付けが新しい相手探しの状態まで消してしまう
-            print("🔍 [Match] 前の対戦の片付けを待つ（片付け中=\(leaveTask != nil)）") // ⚠️ 開発用（調査中）
             await leaveTask?.value
-            print("🔍 [Match] 前の対戦の片付けが終わった") // ⚠️ 開発用（調査中）
             // 片付けを待っている間に「やめる」が押されていたら、相手を探さない
             guard !Task.isCancelled else { return }
             do {
@@ -160,7 +157,6 @@ final class BattleViewModel {
     /// 終わる前に次の相手探しを始めると、前の片付けが新しい相手探しの状態まで消してしまうため
     /// 相手を探していなければ（対戦中など）何もしない
     func cancelSearch() {
-        print("🔍 [Match] 相手探しをやめる phase=\(phase)") // ⚠️ 開発用（調査中）
         guard phase == .searching, let searchTask else { return }
         phase = .cancellingSearch
         searchTask.cancel()
@@ -264,7 +260,6 @@ final class BattleViewModel {
     }
 
     private func startBattle(against opponentMonster: Monster) {
-        print("🔍 [Match] 対戦を始める 相手=\(opponentMonster.name)") // ⚠️ 開発用（調査中）
         self.opponentMonster = opponentMonster
         state = BattleState(
             Fighter(id: Self.myID, name: myMonster.name, maxHP: BattleEngine.maxHP),
