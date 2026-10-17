@@ -9,12 +9,12 @@ import ARKit
 /// AR 捕獲画面。カメラ映像の上に状態メッセージと現在地を重ねる
 /// 歩き回るとモンスターが出て、AR で周りを歩く
 struct ARCaptureView: View {
+    /// 【開発用】locationViewModel は、下に重ねている LocationStatusComponent（RSSI の測定用）でしか使っていない
     let locationViewModel: LocationViewModel
     /// この画面が表示されているか
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
 
-    /// 【開発用】locationViewModel は、下に重ねている LocationStatusComponent（RSSI の測定用）でしか使っていない
     @State private var viewModel = ARCaptureViewModel()
 
     var body: some View {

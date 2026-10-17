@@ -17,7 +17,7 @@ final class ARCaptureViewModel {
     static let captureDistance: Float = 1.0
     /// モンスターが出るまでに歩く距離（m）。出るたびにこの範囲から選び直す
     static let spawnWalkDistanceRange: ClosedRange<Float> = 5...10
-    /// 出現してから逃げるまでの時間
+    /// 出現してから逃げるまでの時間。床が見えていない間（別のタブにいる間も）は数えず、見つかり直したら数え直す
     static let escapeDuration: Duration = .seconds(60)
 
     /// モンスターを置く床が見つかったか
@@ -54,10 +54,17 @@ final class ARCaptureViewModel {
     /// 床のアンカーが固定された（または外れた）ときに ARSceneController から呼ばれる
     func floorStateChanged(isFound: Bool) {
         isFloorFound = isFound
-        if !isFound {
+        if isFound {
+            if wildMonster != nil {
+                startEscapeTimer()
+            }
+        } else {
             noticeTask?.cancel()
             noticeTask = nil
             notice = nil
+            // 見えていないうちに逃げると、戻ってきたときに知らせが出ず、いなくなった理由がわからない
+            escapeTask?.cancel()
+            escapeTask = nil
         }
     }
 
@@ -73,12 +80,7 @@ final class ARCaptureViewModel {
         let wild = WildMonster(monster: Monster.all.randomElement()!)
         wildMonster = wild
         showNotice("\(wild.monster.name)が現れた！")
-        escapeTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.escapeDuration)
-            guard let self, !Task.isCancelled, self.wildMonster?.id == wild.id else { return }
-            self.wildMonster = nil
-            self.showNotice("\(wild.monster.name)は逃げてしまった…")
-        }
+        startEscapeTimer()
     }
 
     /// モンスターがタップされたときに ARSceneController から呼ばれる
@@ -93,6 +95,19 @@ final class ARCaptureViewModel {
         escapeTask = nil
         wildMonster = nil
         showNotice("\(target.monster.name)を捕まえた！")
+    }
+
+    /// 出現しているモンスターが、escapeDuration たつと逃げるようにする
+    private func startEscapeTimer() {
+        guard let wild = wildMonster else { return }
+        escapeTask?.cancel()
+        escapeTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.escapeDuration)
+            guard let self, !Task.isCancelled, self.wildMonster?.id == wild.id else { return }
+            self.wildMonster = nil
+            self.escapeTask = nil
+            self.showNotice("\(wild.monster.name)は逃げてしまった…")
+        }
     }
 
     private func showNotice(_ message: String) {
