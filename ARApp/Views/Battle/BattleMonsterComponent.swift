@@ -6,15 +6,6 @@
 import SwiftUI
 import RealityKit
 
-/// BattleMonsterComponent に流してほしいアニメーション
-/// 作るたびに id が変わるので、同じアニメーション（続けてのパンチなど）でも毎回流せる
-struct MonsterAnimationRequest {
-    let id = UUID()
-    let animation: MonsterAnimation
-    /// true なら流し終わったあと、最後のポーズのまま止める（倒れたとき）
-    var staysAtEnd = false
-}
-
 /// バトル画面に、3D のモンスターを 1 体表示する（カメラ映像は使わない、普通の 3D 表示）
 /// 立っているアニメーションをくり返し、animation が変わるたびにそのアニメーションを 1 回流す
 struct BattleMonsterComponent: View {
@@ -54,7 +45,7 @@ struct BattleMonsterComponent: View {
         .id(monster.modelName)
         .onChange(of: animation?.id) {
             guard let animation else { return }
-            model?.monsterAnimator?.playOnce(animation.animation, staysAtEnd: animation.staysAtEnd)
+            model?.monsterAnimator?.play(animation)
         }
     }
 }

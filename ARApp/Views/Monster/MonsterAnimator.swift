@@ -12,6 +12,7 @@ import RealityKit
 ///     model.monsterAnimator?.loop(.walk)       // くり返し流す（歩く、立っているなど）
 ///     model.monsterAnimator?.playOnce(.punch)  // 1 回だけ流して、くり返していたアニメーションに戻る
 ///     model.monsterAnimator?.playOnce(.death, staysAtEnd: true)  // 最後のポーズのまま止まる
+///     model.monsterAnimator?.play(request)     // MonsterAnimationRequest のとおりに流す（待ってから流すなど）
 ///
 /// 切り替えるときは前のアニメーションと少しの間混ぜて、ポーズが急に飛ばないようにする
 final class MonsterAnimator {
@@ -24,10 +25,26 @@ final class MonsterAnimator {
     /// くり返し流しているアニメーション。1 回だけ流すアニメーションが終わったら、これに戻る
     private var looping = MonsterAnimation.idle
     private var returnTask: Task<Void, Never>?
+    /// play(_:) で、流し始めるのを待っているタスク
+    private var requestTask: Task<Void, Never>?
 
     init(model: Entity) {
         self.model = model
         source = model.availableAnimations.first
+    }
+
+    /// MonsterAnimationRequest のとおりにアニメーションを流す
+    /// 待っている間に次の play(_:) が呼ばれたら、前の分は流さない
+    func play(_ request: MonsterAnimationRequest) {
+        requestTask?.cancel()
+        requestTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(request.delay))
+            } catch {
+                return
+            }
+            self?.playOnce(request.animation, staysAtEnd: request.staysAtEnd)
+        }
     }
 
     /// アニメーションをくり返し流す

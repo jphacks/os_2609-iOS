@@ -12,6 +12,12 @@ struct BattleView: View {
     @State private var viewModel: BattleViewModel
     /// タップした位置の波紋。クールダウン中でも出るので、タップが届いているかがわかる
     @State private var tapRipple: TapRipple?
+    /// 自分と相手のモンスターに流すアニメーション。どれを流すかは見た目の話なので、この画面で決める
+    @State private var myAnimation: MonsterAnimationRequest?
+    @State private var opponentAnimation: MonsterAnimationRequest?
+
+    /// 攻撃の動きを流し始めてから、相手に当たるまでの時間（秒）。のけぞりをこの分だけ遅らせる
+    private static let impactDelay = 0.25
 
     init(locationViewModel: LocationViewModel, service: any BattleService) {
         self.locationViewModel = locationViewModel
@@ -41,7 +47,7 @@ struct BattleView: View {
             StatBarComponent(title: opponent.name, value: opponent.hp, maxValue: opponent.maxHP, color: .red)
 
             // 2. 中央上：相手のモンスター。こちらを向いて、左下の自分のモンスターの方を見る
-            BattleMonsterComponent(monster: opponentMonster, animation: nil, facing: -0.5)
+            BattleMonsterComponent(monster: opponentMonster, animation: opponentAnimation, facing: -0.5)
                 .frame(width: 260, height: 260)
                 .overlay {
                     if let hit = viewModel.lastHitOnOpponent {
@@ -56,15 +62,12 @@ struct BattleView: View {
                 .shake(trigger: viewModel.lastHitOnOpponent?.id)
                 // 相手の攻撃のたびに自分の方へ踏み込む
                 .lunge(CGSize(width: -24, height: 36), trigger: viewModel.lastHitOnMe?.id)
-                // 倒したら薄くなる
-                .opacity(opponent.hp == 0 ? 0.2 : 1)
-                .animation(.easeOut(duration: 0.5), value: opponent.hp == 0)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             Spacer(minLength: 0)
 
             // 3. 中央下：自分のモンスター。後ろ姿で、右上の相手の方を向く
-            BattleMonsterComponent(monster: viewModel.myMonster, animation: nil, facing: .pi - 0.5)
+            BattleMonsterComponent(monster: viewModel.myMonster, animation: myAnimation, facing: .pi - 0.5)
                 .frame(width: 250, height: 250)
                 .overlay {
                     if let hit = viewModel.lastHitOnMe {
@@ -133,6 +136,34 @@ struct BattleView: View {
             }
         }
         .animation(.easeOut(duration: 0.3), value: viewModel.outcome)
+        // HP は引数の me / opponent ではなく viewModel から読む（引数は前に描いたときの値のことがある）
+        .onChange(of: viewModel.lastHitOnOpponent?.id) {
+            guard let hit = viewModel.lastHitOnOpponent, let opponent = viewModel.opponent else { return }
+            myAnimation = attackAnimation(of: viewModel.myMonster, hit: hit)
+            opponentAnimation = reactionAnimation(hp: opponent.hp)
+        }
+        .onChange(of: viewModel.lastHitOnMe?.id) {
+            guard let hit = viewModel.lastHitOnMe, let me = viewModel.me else { return }
+            opponentAnimation = attackAnimation(of: opponentMonster, hit: hit)
+            myAnimation = reactionAnimation(hp: me.hp)
+        }
+        // 次の対戦で、前の対戦のアニメーション（倒れたままなど）を流さないように消しておく
+        .onDisappear {
+            myAnimation = nil
+            opponentAnimation = nil
+        }
+    }
+
+    /// 攻撃する側のアニメーション
+    private func attackAnimation(of monster: Monster, hit: BattleViewModel.Hit) -> MonsterAnimationRequest {
+        MonsterAnimationRequest(animation: hit.isSpecial ? monster.specialAttack : monster.normalAttack)
+    }
+
+    /// 攻撃を受けた側のアニメーション。攻撃が当たるタイミングでのけぞり、HP が 0 になったら倒れたままになる
+    private func reactionAnimation(hp: Int) -> MonsterAnimationRequest {
+        hp == 0
+            ? MonsterAnimationRequest(animation: .death, delay: Self.impactDelay, staysAtEnd: true)
+            : MonsterAnimationRequest(animation: .hitReact, delay: Self.impactDelay)
     }
 }
 
