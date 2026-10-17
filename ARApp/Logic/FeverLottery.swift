@@ -11,7 +11,7 @@ import Foundation
 /// 抽選は攻撃した端末で行い、当たったら fever を相手に送る
 enum FeverLottery {
     /// 通常攻撃 1 回でリーチになる確率
-    static let reachChance = 0.1
+    static let reachChance = 0.2
     /// リーチが赤（激アツ）になる確率
     static let hotChance = 0.25
     /// リーチが当たる確率。青と赤
