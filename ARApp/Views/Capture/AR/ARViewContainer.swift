@@ -29,13 +29,16 @@ struct ARViewContainer: UIViewRepresentable {
         configuration.planeDetection = [.horizontal]
         arView.session.run(configuration)
 
-        context.coordinator.placeMonster(in: arView)
+        context.coordinator.start(in: arView)
 
         return arView
     }
 
-    /// SwiftUI の状態が変わったときに呼ばれる（今は更新するものがない）
-    func updateUIView(_ uiView: ARView, context: Context) {}
+    /// SwiftUI の状態が変わったときに呼ばれる
+    /// ここで読んだ ViewModel のプロパティ（wildMonsters）が変わるたびに、SwiftUI がもう一度呼んでくれる
+    func updateUIView(_ uiView: ARView, context: Context) {
+        context.coordinator.sync(viewModel.wildMonsters)
+    }
 
     /// View が画面から取り除かれるときに呼ばれる。カメラとセンサーを停止する
     static func dismantleUIView(_ uiView: ARView, coordinator: ARSceneController) {
