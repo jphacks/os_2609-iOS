@@ -23,6 +23,8 @@ enum MonsterEntity {
             }
             // アニメーションを流さないと、腕を広げた姿勢のまま固まって見える
             MonsterAnimation.idle.playRepeating(on: model)
+            // 足元に影を落として、床の上に立っているように見せる（影がないと宙に浮いて見える）
+            addGroundingShadow(to: model)
             return model
         } catch {
             // 【開発用】原因を調べるためのログ。リリースするときに消してよい
@@ -30,5 +32,13 @@ enum MonsterEntity {
             // 開発用の球体。PlaceholderMonsterEntity.swift を消すときは `return Entity()` に置き換える
             return PlaceholderMonsterEntity.make(size: monster.size)
         }
+    }
+
+    /// 影は形を持つエンティティ（ModelComponent があるもの）ごとに付ける必要があるので、子をたどって全部に付ける
+    private static func addGroundingShadow(to entity: Entity) {
+        if entity.components.has(ModelComponent.self) {
+            entity.components.set(GroundingShadowComponent(castsShadow: true))
+        }
+        entity.children.forEach(addGroundingShadow)
     }
 }
