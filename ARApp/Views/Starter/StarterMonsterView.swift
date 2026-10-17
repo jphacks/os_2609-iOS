@@ -5,12 +5,15 @@
 
 import SwiftUI
 
-/// 最初にモンスターを選ぶ画面。3 体から 1 体をタップで選び、大きく 3D で確かめてから決める
-/// 3D は SceneKit（MonsterModelComponent）で出し、RealityKit は使わない（捕獲画面の ARView とぶつからないように）
+/// 最初にモンスターを選ぶ画面。円盤に乗った 3 体が輪になって並び、横にスワイプ（または ‹ ›）で回して、手前のモンスターに決める
+/// 3D は SceneKit（StarterCarouselComponent）で出し、RealityKit は使わない（捕獲画面の ARView とぶつからないように）
 struct StarterMonsterView: View {
     @State private var viewModel: StarterMonsterViewModel
     /// 決めたときに呼ぶ
     let onDecided: () -> Void
+
+    /// これだけ横にスワイプしたら、輪を回す（pt）
+    private static let swipeThreshold: CGFloat = 50
 
     init(collection: any MonsterCollection, onDecided: @escaping () -> Void) {
         _viewModel = State(initialValue: StarterMonsterViewModel(collection: collection))
@@ -22,28 +25,38 @@ struct StarterMonsterView: View {
             Text("最初のモンスターを選ぼう")
                 .font(.title2.bold())
 
-            Group {
-                if let selected = viewModel.selected {
-                    VStack(spacing: 4) {
-                        MonsterModelComponent(monster: selected)
-                            // 選び直したら、新しいモンスターで作り直す
-                            .id(selected.modelName)
-                        Text(selected.name)
-                            .font(.title3.bold())
-                    }
-                } else {
-                    ContentUnavailableView("下のモンスターをタップしてね", systemImage: "hand.tap")
+            StarterCarouselComponent(monsters: viewModel.candidates, frontIndex: viewModel.selectedIndex)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 20)
+                        .onEnded { value in
+                            // 左にスワイプすると右のモンスターが、右にスワイプすると左のモンスターが手前に来る
+                            if value.translation.width < -Self.swipeThreshold {
+                                viewModel.showNext()
+                            } else if value.translation.width > Self.swipeThreshold {
+                                viewModel.showPrevious()
+                            }
+                        }
+                )
+                .overlay(alignment: .leading) {
+                    arrowButton(systemName: "chevron.left") { viewModel.showPrevious() }
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .trailing) {
+                    arrowButton(systemName: "chevron.right") { viewModel.showNext() }
+                }
 
-            HStack(spacing: 12) {
-                ForEach(viewModel.candidates, id: \.modelName) { monster in
-                    StarterMonsterCardComponent(monster: monster, isSelected: monster.modelName == viewModel.selected?.modelName)
-                        .onTapGesture { viewModel.select(monster) }
+            Text(viewModel.selected.name)
+                .font(.title3.bold())
+
+            // 何番目のモンスターが手前に出ているかの目印
+            HStack(spacing: 8) {
+                ForEach(viewModel.candidates.indices, id: \.self) { index in
+                    Circle()
+                        .fill(index == viewModel.selectedIndex ? Color.primary : Color.secondary.opacity(0.3))
+                        .frame(width: 8, height: 8)
                 }
             }
-            .frame(height: 160)
 
             Button {
                 viewModel.confirm()
@@ -55,33 +68,20 @@ struct StarterMonsterView: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(viewModel.selected == nil)
         }
         .padding()
-        .background(Color(.systemBackground))
+        // タブの上に重ねて出すので、タブバーやステータスバーの下まで覆う
+        .background(Color(.systemBackground).ignoresSafeArea())
     }
-}
 
-/// 選べるモンスター 1 体ぶんのカード。小さな 3D と名前を出し、選んでいるときは枠で囲む
-private struct StarterMonsterCardComponent: View {
-    let monster: Monster
-    let isSelected: Bool
-
-    var body: some View {
-        VStack(spacing: 4) {
-            MonsterModelComponent(monster: monster)
-                // カードはタップで選ぶので、ドラッグで回さない（タップはカード全体で受け取る）
-                .allowsHitTesting(false)
-            Text(monster.name)
-                .font(.caption.bold())
+    private func arrowButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.title3.bold())
+                .padding(8)
         }
-        .padding(8)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 16))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(isSelected ? Color.accentColor : .clear, lineWidth: 3)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.circle)
     }
 }
 

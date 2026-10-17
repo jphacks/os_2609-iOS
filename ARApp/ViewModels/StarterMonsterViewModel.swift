@@ -6,16 +6,19 @@
 import Observation
 
 /// 最初にモンスターを選ぶ画面の状態
-/// 決めたモンスターは、捕まえたものとして保存し、バトルに出すモンスターにもする
+/// 手前に出ているモンスターが選ばれた状態で、決めたモンスターは捕まえたものとして保存し、バトルに出すモンスターにもする
 @Observable
 final class StarterMonsterViewModel {
     /// 最初に選べるモンスター（バニー、フロッグ、バード）
+    /// どれも Monster.all にあるので、candidates は空にならない
     private static let candidateModelNames = ["monster-bunny", "monster-frog", "monster-birb"]
 
     let candidates = candidateModelNames.compactMap(Monster.named)
 
-    /// タップして選んでいるモンスター。まだ選んでいなければ nil
-    private(set) var selected: Monster?
+    /// 手前に出ている（選ばれている）モンスターの番号
+    private(set) var selectedIndex = 0
+
+    var selected: Monster { candidates[selectedIndex] }
 
     private let collection: any MonsterCollection
 
@@ -23,14 +26,18 @@ final class StarterMonsterViewModel {
         self.collection = collection
     }
 
-    /// モンスターを選ぶ。ほかのモンスターを選べば選び直しになる
-    func select(_ monster: Monster) {
-        selected = monster
+    /// 次のモンスターを手前に出す。最後まで行ったら最初に戻る
+    func showNext() {
+        selectedIndex = (selectedIndex + 1) % candidates.count
     }
 
-    /// 選んでいるモンスターに決める
+    /// 前のモンスターを手前に出す。最初より前は最後に戻る
+    func showPrevious() {
+        selectedIndex = (selectedIndex - 1 + candidates.count) % candidates.count
+    }
+
+    /// 手前に出ているモンスターに決める
     func confirm() {
-        guard let selected else { return }
         collection.add(selected)
         collection.setBattleMonster(selected)
     }
