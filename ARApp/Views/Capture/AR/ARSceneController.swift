@@ -46,8 +46,9 @@ final class ARSceneController: NSObject {
     func start(in arView: ARView) {
         self.arView = arView
 
-        // 20cm 四方以上の水平面が見つかったら、そこに自動で固定されるアンカー
-        let anchor = AnchorEntity(.plane(.horizontal, classification: .any, minimumBounds: [0.2, 0.2]))
+        // 20cm 四方以上の床が見つかったら、そこに自動で固定されるアンカー
+        // 机や棚の上も水平面なので、床だけに絞る（絞らないと、机の高さに置かれて宙に浮いて見える）
+        let anchor = AnchorEntity(.plane(.horizontal, classification: .floor, minimumBounds: [0.2, 0.2]))
         // 床が見つかってアンカーが固定されたら ViewModel に知らせる
         // 固定のイベントを取りこぼさないよう、シーンに置く前に購読しておく
         anchoredSubscription = arView.scene.subscribe(
