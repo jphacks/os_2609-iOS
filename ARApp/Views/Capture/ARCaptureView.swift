@@ -16,14 +16,10 @@ struct ARCaptureView: View {
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
 
-<<<<<<< HEAD
     init(locationViewModel: LocationViewModel, collection: any MonsterCollection) {
         self.locationViewModel = locationViewModel
         _viewModel = State(initialValue: ARCaptureViewModel(collection: collection))
     }
-=======
-    @State private var viewModel = ARCaptureViewModel()
->>>>>>> origin/main
 
     var body: some View {
         // ワールドトラッキングは A9 以降のチップを搭載した実機でのみ動作する（シミュレータは非対応）
