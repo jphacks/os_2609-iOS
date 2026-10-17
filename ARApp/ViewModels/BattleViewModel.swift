@@ -172,9 +172,7 @@ final class BattleViewModel {
         phase = .lobby
         gauge = TimingGauge(traverseDuration: 1, zones: [])
         zoneResults = []
-        tapJudgements = []
         lastEvent = nil
-        hitStopUntil = .distantPast
         stoppedAt = .distantPast
     }
 
