@@ -24,10 +24,10 @@ struct MapView: View {
     }
 }
 
-#Preview("ブースB") {
-    // ブースBのパターンを流すダミー。1 秒ほどで現在地が「ブースB」になる
-    let boothB = Location.registered.first { $0.id == "booth_b" }!
-    let viewModel = LocationViewModel(scanner: DummyBeaconScanner(location: boothB))
+#Preview("地点2") {
+    // 地点2のパターンを流すダミー。1 秒ほどで現在地が「2」になる
+    let point2 = Location.registered.first { $0.id == "point_2" }!
+    let viewModel = LocationViewModel(scanner: DummyBeaconScanner(location: point2))
     MapView(locationViewModel: viewModel)
         .onAppear { viewModel.start() }
 }

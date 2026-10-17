@@ -21,19 +21,20 @@ extension Location {
     /// 位置推定に使うビーコンの名前。RSSI の配列は常にこの順に並べる
     static let beaconNames = ["BeaconA", "BeaconB", "BeaconC", "BeaconD"]
 
-    /// 登録済みの地点。位置は会場の見取り図に合わせて調整する
-    /// RSSI の数値は仮のものなので、実際の場所で測った値に置き換える
-    /// ブースA〜C は 2026-10-17 に試しに測った値（BeaconA〜C が起動、D は未起動。-100 は受信できなかったもの）
+    /// 登録済みの地点。位置は `VenueMap.png` 上の割合で表す
+    /// 各 fingerprint は地点1〜6で実測した値。並びは BeaconA〜D
     static let registered = [
-        Location(id: "entrance", name: "入口", position: MapPosition(x: 0.5, y: 0.88),
-                 fingerprint: [-52, -67, -81, -73]),
-        Location(id: "booth_a", name: "ブースA", position: MapPosition(x: 0.22, y: 0.58),
-                 fingerprint: [-47, -100, -63, -100]),
-        Location(id: "booth_b", name: "ブースB", position: MapPosition(x: 0.78, y: 0.58),
-                 fingerprint: [-71, -86, -64, -100]),
-        Location(id: "booth_c", name: "ブースC", position: MapPosition(x: 0.22, y: 0.2),
-                 fingerprint: [-69, -100, -39, -100]),
-        Location(id: "stairs", name: "階段", position: MapPosition(x: 0.8, y: 0.2),
-                 fingerprint: [-76, -70, -61, -47]),
+        Location(id: "point_1", name: "1", position: MapPosition(x: 0.113, y: 0.899),
+                 fingerprint: [-54, -100, -75, -68]),
+        Location(id: "point_2", name: "2", position: MapPosition(x: 0.127, y: 0.653),
+                 fingerprint: [-65, -100, -69, -84]),
+        Location(id: "point_3", name: "3", position: MapPosition(x: 0.107, y: 0.378),
+                 fingerprint: [-72, -100, -74, -63]),
+        Location(id: "point_4", name: "4", position: MapPosition(x: 0.414, y: 0.361),
+                 fingerprint: [-86, -90, -71, -78]),
+        Location(id: "point_5", name: "5", position: MapPosition(x: 0.418, y: 0.623),
+                 fingerprint: [-71, -100, -74, -74]),
+        Location(id: "point_6", name: "6", position: MapPosition(x: 0.479, y: 0.947),
+                 fingerprint: [-81, -82, -77, -100]),
     ]
 }

@@ -8,8 +8,6 @@ import CoreBluetooth
 /// CoreBluetooth で ESP32 のビーコンをスキャンする
 /// 接続はせず、流れてくる広告パケットを受信するだけ
 final class BLEBeaconScanner: NSObject, BeaconScanner, CBCentralManagerDelegate {
-    /// ESP32 側の SERVICE_UUID と同じ値。この UUID を広告しているデバイスだけを受信する
-    private static let serviceUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef0")
     /// CoreBluetooth が RSSI を測れなかったときに返す値
     private static let unavailableRSSI = 127
 
@@ -35,7 +33,7 @@ final class BLEBeaconScanner: NSObject, BeaconScanner, CBCentralManagerDelegate 
         // 通常は同じデバイスの通知が 1 回にまとめられる
         // RSSI を受信のたびに知りたいので、重複を許可する
         central.scanForPeripherals(
-            withServices: [Self.serviceUUID],
+            withServices: nil,
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         )
     }
@@ -47,8 +45,20 @@ final class BLEBeaconScanner: NSObject, BeaconScanner, CBCentralManagerDelegate 
         advertisementData: [String: Any],
         rssi RSSI: NSNumber
     ) {
-        let name = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name
-        guard let name, RSSI.intValue != Self.unavailableRSSI else { return }
-        onReceive?(name, RSSI.intValue)
+        let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name
+        guard
+            let advertisedName,
+            let beaconName = Self.beaconName(for: advertisedName),
+            RSSI.intValue != Self.unavailableRSSI
+        else { return }
+        onReceive?(beaconName, RSSI.intValue)
+    }
+
+    /// 広告名の前後の空白や大文字・小文字の違いを吸収して、登録済みの正式なビーコン名を返す
+    private static func beaconName(for advertisedName: String) -> String? {
+        let normalized = advertisedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Location.beaconNames.first {
+            $0.compare(normalized, options: .caseInsensitive) == .orderedSame
+        }
     }
 }

@@ -24,7 +24,7 @@ final class DummyBeaconScanner: BeaconScanner {
     private let walkDuration: TimeInterval
     private var emitTask: Task<Void, Never>?
 
-    /// 初期値は登録済みの最初の地点（入口）に立っているときのパターン
+    /// 初期値は登録済みの最初の地点（地点1）に立っているときのパターン
     init(location: Location = Location.registered[0]) {
         route = [location.fingerprint]
         stayDuration = 0

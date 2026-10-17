@@ -17,9 +17,10 @@ struct IndoorMapComponent: View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack {
-                // 床
-                Rectangle()
-                    .fill(Color(red: 0.62, green: 0.84, blue: 0.62))
+                Image("VenueMap")
+                    .resizable()
+                    .scaledToFill()
+                    .accessibilityLabel("会場マップ")
 
                 ForEach(locations) { location in
                     LocationMarkerComponent(location: location, isCurrent: location.id == currentLocation?.id)
@@ -38,7 +39,8 @@ struct IndoorMapComponent: View {
             // 次の測定の間は止めておきたいので、測定時間（2 秒）より十分短くする
             .animation(.easeInOut(duration: 0.5), value: currentPosition)
         }
-        .aspectRatio(3 / 4, contentMode: .fit)
+        .aspectRatio(3 / 2, contentMode: .fit)
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 24))
     }
 
