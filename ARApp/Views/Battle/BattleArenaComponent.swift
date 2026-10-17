@@ -39,7 +39,7 @@ struct BattleArenaComponent: View {
                     .multilineTextAlignment(.center)
                     .padding()
             } else if isVisible {
-                // 外すと BattleARViewContainer の dismantleUIView が呼ばれ、セッションが止まる
+                // 外すと BattleARViewContainer の dismantleUIView が呼ばれ、セッションが止まる（捕獲画面から引き継いだセッションは止めない）
                 // ARView は最初から表示する場所の大きさで作る必要があるので、大きさが決まってから置く
                 GeometryReader { proxy in
                     if proxy.size.width > 0, proxy.size.height > 0 {

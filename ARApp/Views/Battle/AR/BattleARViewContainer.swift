@@ -8,7 +8,7 @@ import RealityKit
 import ARKit
 
 /// バトル画面の ARView を SwiftUI で使うためのラッパー
-/// 担当：SwiftUI との橋渡しと、AR セッションの開始・停止（捕獲画面の ARViewContainer と同じ）
+/// 担当：SwiftUI との橋渡しと、AR セッションの開始・停止
 /// 野生のモンスターとのバトルでは、捕獲画面の AR セッションを引き継いで使い、外しても止めない（止めるのは ARCaptureView）
 struct BattleARViewContainer: UIViewRepresentable {
     /// ARView を作るときの大きさ。表示する場所の大きさを渡す

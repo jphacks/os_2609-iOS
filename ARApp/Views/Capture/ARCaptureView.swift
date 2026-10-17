@@ -46,7 +46,7 @@ struct ARCaptureView: View {
             ZStack {
                 Color.black
                 if isVisible && arScreen == .capture {
-                    // 外すと ARViewContainer の dismantleUIView が呼ばれ、セッションが止まる
+                    // 外すと ARViewContainer の dismantleUIView が呼ばれる。セッションは止めず、バトルに引き継ぐ（止めるのは onDisappear）
                     ARViewContainer(viewModel: viewModel, session: arSession)
                 }
             }

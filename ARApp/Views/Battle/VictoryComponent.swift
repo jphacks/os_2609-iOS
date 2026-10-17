@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// 勝ちが確定したときに、大きく「VICTORY!」を出す。後ろで黄色とピンクの光の筋が回る
-/// 少し見せたあと、BattleFightComponent がリザルト（BattleResultComponent）に切り替える
+/// 少し見せたあと、BattleFightComponent がリザルト（BattleResultComponent）に切り替える（野生のモンスターとのバトルでは、捕獲画面に戻して詳細画面を出す）
 struct VictoryComponent: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isShown = false
