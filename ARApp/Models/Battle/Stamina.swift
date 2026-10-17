@@ -11,12 +11,14 @@ import Foundation
 /// クールダウンと同じく、入力した端末だけで数える（相手には送らない）
 struct Stamina {
     static let max = 100.0
-    static let attackCost = 15.0
+    /// 満タンから全力で連打すると（0.3 秒に 1 回）、8 回目でへとへとになる
+    static let attackCost = 20.0
     static let dodgeCost = 20.0
-    /// 1 秒に回復する量。0.6 秒に 1 回の攻撃なら、減らずに続けられる
+    /// 1 秒に回復する量。0.8 秒に 1 回の攻撃なら、減らずに続けられる
     static let recoveryPerSecond = 25.0
     /// へとへとになってから、また動けるようになるまでの時間（秒）。終わると満タンに戻る
-    static let restDuration = 3.5
+    /// へとへとになりやすいぶん、短めにしている
+    static let restDuration = 2.5
 
     /// 最後に増減したときの値と時刻。今の値は、ここから回復した分を足して求める
     private var storedValue = max

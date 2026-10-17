@@ -9,7 +9,7 @@
 /// 2 人の行動が届く順番が端末ごとに違っても、HP は食い違わない
 enum BattleEngine {
     /// 2 人とも同じ HP で始める
-    static let maxHP = 300
+    static let maxHP = 200
     static let normalAttackDamage = 10
     /// 通常攻撃のクールダウン（秒）。連打の制限は入力した端末で行うので、状態には持たない（スタミナも同じ）
     static let normalAttackCooldown: Double = 0.3
