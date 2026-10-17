@@ -17,7 +17,7 @@ final class SupabaseBattleService: BattleService {
         case noOpponent
         /// 相手の攻撃が一定時間届かない、または相手が対戦をやめた
         case opponentLeft
-        /// 届いたモンスター名や判定が、アプリの知らない値だった
+        /// 届いたモンスター名が、アプリの知らない値だった
         case invalidData
         /// 参加中の対戦がないのに、攻撃を送ろうとした・受け取ろうとした
         case notInBattle
@@ -232,10 +232,13 @@ final class SupabaseBattleService: BattleService {
         }
     }
 
+    /// 知らない値が 1 つでも入った攻撃は受け取らない
+    /// 一部だけ捨てて受け取ると、ダメージの計算が相手の端末と食い違うため
     private func receive(_ row: MoveRow) {
-        guard row.playerID != playerID,
-              let attackType = AttackType(rawValue: row.attackType) else { return }
         let judgements = row.judgements.compactMap(TimingJudgement.init(rawValue:))
+        guard row.playerID != playerID,
+              let attackType = AttackType(rawValue: row.attackType),
+              judgements.count == row.judgements.count else { return }
         opponentMoves[row.turn] = BattleMove(attackType: attackType, judgements: judgements)
     }
 
