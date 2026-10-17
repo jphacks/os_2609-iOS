@@ -16,17 +16,25 @@ struct MapView: View {
 
             IndoorMapComponent(
                 locations: Location.registered,
-                currentLocation: locationViewModel.currentLocation
+                currentLocation: locationViewModel.currentLocation,
+                currentPosition: locationViewModel.currentPosition
             )
         }
         .padding()
     }
 }
 
-#Preview {
+#Preview("ブースB") {
     // ブースBのパターンを流すダミー。1 秒ほどで現在地が「ブースB」になる
     let boothB = Location.registered.first { $0.id == "booth_b" }!
     let viewModel = LocationViewModel(scanner: DummyBeaconScanner(location: boothB))
+    MapView(locationViewModel: viewModel)
+        .onAppear { viewModel.start() }
+}
+
+#Preview("地点を巡る") {
+    // 登録済みの地点を順に歩くダミー。プレイヤーが地点と地点の間を動く
+    let viewModel = LocationViewModel(scanner: DummyBeaconScanner(walkingThrough: Location.registered))
     MapView(locationViewModel: viewModel)
         .onAppear { viewModel.start() }
 }
