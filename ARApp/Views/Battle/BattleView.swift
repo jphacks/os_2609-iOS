@@ -6,6 +6,7 @@
 import SwiftUI
 
 /// 対戦画面。同じ地点にいる相手とマッチングし、画面の空いている所をタップして攻撃し、溜まったら必殺技を撃つ
+/// 対戦中は、カメラに映る床の上でモンスター同士が戦う（AR）
 /// 部品は同じフォルダの別ファイルにある（StatBarComponent、BattleEffects など）
 struct BattleView: View {
     let locationViewModel: LocationViewModel
@@ -15,6 +16,9 @@ struct BattleView: View {
     /// 自分と相手のモンスターに流すアニメーション。どれを流すかは見た目の話なので、この画面で決める
     @State private var myAnimation: MonsterAnimationRequest?
     @State private var opponentAnimation: MonsterAnimationRequest?
+    /// この画面が表示されているか
+    /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
+    @State private var isVisible = false
 
     /// 攻撃の動きを流し始めてから、相手に当たるまでの時間（秒）。のけぞりをこの分だけ遅らせる
     private static let impactDelay = 0.25
@@ -25,6 +29,13 @@ struct BattleView: View {
     }
 
     var body: some View {
+        content
+            .onAppear { isVisible = true }
+            .onDisappear { isVisible = false }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if let me = viewModel.me, let opponent = viewModel.opponent, let opponentMonster = viewModel.opponentMonster {
             fightScreen(me: me, opponent: opponent, opponentMonster: opponentMonster)
         } else {
@@ -45,42 +56,31 @@ struct BattleView: View {
         VStack(spacing: 16) {
             // 1. 上部：相手の名前と HP
             StatBarComponent(title: opponent.name, value: opponent.hp, maxValue: opponent.maxHP, color: .red)
+                .padding(12)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
 
-            // 2. 中央上：相手のモンスター。こちらを向いて、左下の自分のモンスターの方を見る
-            BattleMonsterComponent(monster: opponentMonster, animation: opponentAnimation, facing: -0.5)
-                .frame(width: 260, height: 260)
-                .overlay {
-                    if let hit = viewModel.lastHitOnOpponent {
-                        FloatingDamageComponent(
-                            text: "-\(hit.damage)",
-                            color: hit.isSpecial ? .yellow : .red,
-                            fontSize: hit.isSpecial ? 64 : 36
-                        )
+            // 2. 中央：当たったダメージの数字。モンスターは後ろの AR の床の上にいる
+            // 数字はモンスターの位置には合わせず、相手の分は上、自分の分は下に出す
+            ZStack {
+                if let hit = viewModel.lastHitOnOpponent {
+                    FloatingDamageComponent(
+                        text: "-\(hit.damage)",
+                        color: hit.isSpecial ? .yellow : .red,
+                        fontSize: hit.isSpecial ? 64 : 36
+                    )
+                    .id(hit.id)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 120)
+                }
+                if let hit = viewModel.lastHitOnMe {
+                    FloatingDamageComponent(text: "-\(hit.damage)", color: .purple, fontSize: hit.isSpecial ? 64 : 36)
                         .id(hit.id)
-                    }
+                        .frame(maxHeight: .infinity, alignment: .bottom)
                 }
-                .shake(trigger: viewModel.lastHitOnOpponent?.id)
-                // 相手の攻撃のたびに自分の方へ踏み込む
-                .lunge(CGSize(width: -24, height: 36), trigger: viewModel.lastHitOnMe?.id)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            Spacer(minLength: 0)
-
-            // 3. 中央下：自分のモンスター。後ろ姿で、右上の相手の方を向く
-            BattleMonsterComponent(monster: viewModel.myMonster, animation: myAnimation, facing: .pi - 0.5)
-                .frame(width: 250, height: 250)
-                .overlay {
-                    if let hit = viewModel.lastHitOnMe {
-                        FloatingDamageComponent(text: "-\(hit.damage)", color: .purple, fontSize: hit.isSpecial ? 64 : 36)
-                            .id(hit.id)
-                    }
-                }
-                .shake(trigger: viewModel.lastHitOnMe?.id)
-                // 攻撃するたびに相手の方へ踏み込む
-                .lunge(CGSize(width: 24, height: -36), trigger: viewModel.lastHitOnOpponent?.id)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            // 4. 下部：自分の HP と必殺技ゲージ
+            // 3. 下部：自分の HP と必殺技ゲージ
             VStack(spacing: 8) {
                 StatBarComponent(title: me.name, value: me.hp, maxValue: me.maxHP, color: .green)
                 StatBarComponent(
@@ -90,8 +90,10 @@ struct BattleView: View {
                     color: me.canUseSpecial ? .orange : .yellow
                 )
             }
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
 
-            // 5. 最下部：必殺技ボタン
+            // 4. 最下部：必殺技ボタン
             Button {
                 viewModel.useSpecial()
             } label: {
@@ -105,6 +107,19 @@ struct BattleView: View {
             .disabled(!me.canUseSpecial)
         }
         .padding()
+        .background {
+            BattleArenaComponent(
+                myMonster: viewModel.myMonster,
+                opponentMonster: opponentMonster,
+                myAnimation: myAnimation,
+                opponentAnimation: opponentAnimation,
+                hitOnOpponentID: viewModel.lastHitOnOpponent?.id,
+                hitOnMeID: viewModel.lastHitOnMe?.id,
+                isVisible: isVisible
+            )
+            // 攻撃を受けたら、カメラの映像ごと揺らす
+            .shake(trigger: viewModel.lastHitOnMe?.id)
+        }
         // 空いている所もタップできるようにする。ボタンのタップはボタンが優先される
         .contentShape(Rectangle())
         .onTapGesture { location in
@@ -136,6 +151,8 @@ struct BattleView: View {
             }
         }
         .animation(.easeOut(duration: 0.3), value: viewModel.outcome)
+        // カメラの映像の上でも文字が読みやすいよう、暗い背景に白い文字にする
+        .environment(\.colorScheme, .dark)
         // HP は引数の me / opponent ではなく viewModel から読む（引数は前に描いたときの値のことがある）
         .onChange(of: viewModel.lastHitOnOpponent?.id) {
             guard let hit = viewModel.lastHitOnOpponent, let opponent = viewModel.opponent else { return }

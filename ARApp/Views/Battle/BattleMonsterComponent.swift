@@ -6,7 +6,8 @@
 import SwiftUI
 import RealityKit
 
-/// バトル画面に、3D のモンスターを 1 体表示する（カメラ映像は使わない、普通の 3D 表示）
+/// 対戦前の画面に、3D のモンスターを 1 体表示する（カメラ映像は使わない、普通の 3D 表示）
+/// 対戦中は AR で表示する（Views/Battle/AR）
 /// 立っているアニメーションをくり返し、animation が変わるたびにそのアニメーションを 1 回流す
 struct BattleMonsterComponent: View {
     let monster: Monster
@@ -26,7 +27,7 @@ struct BattleMonsterComponent: View {
             content.add(model)
 
             // カメラ映像がないので、部屋の光の代わりに前・横・後ろから照らす
-            // 自分のモンスターは後ろ姿を見せるので、後ろからも前と同じくらい明るくする
+            // 向きを変えて横や後ろを見せても暗くならないよう、後ろからも強めに照らす
             for (position, intensity) in [(SIMD3<Float>(1.5, 2, 2), Float(3000)), ([-2, 1, 1.5], 1500), ([0, 2, -2], 2500)] {
                 let light = DirectionalLight()
                 light.light.intensity = intensity
