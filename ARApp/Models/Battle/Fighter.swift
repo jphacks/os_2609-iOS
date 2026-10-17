@@ -9,6 +9,7 @@ typealias FighterID = String
 /// バトルで戦う 1 人ぶんの状態。自分も相手も同じ形で持つ
 struct Fighter {
     static let specialGaugeMax = 100
+    static let feverGaugeMax = 100
 
     let id: FighterID
     let name: String
@@ -16,6 +17,8 @@ struct Fighter {
     var hp: Int
     /// 必殺技ゲージ（0〜specialGaugeMax）
     var specialGauge = 0
+    /// フィーバーゲージ（0〜feverGaugeMax）
+    var feverGauge = 0
 
     init(id: FighterID, name: String, maxHP: Int) {
         self.id = id
@@ -26,4 +29,6 @@ struct Fighter {
 
     /// ゲージが満タンなら必殺技を使える
     var canUseSpecial: Bool { specialGauge >= Fighter.specialGaugeMax }
+    /// ゲージが満タンならフィーバーを始められる
+    var canUseFever: Bool { feverGauge >= Fighter.feverGaugeMax }
 }

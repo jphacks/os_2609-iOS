@@ -11,12 +11,14 @@
 import Foundation
 
 /// 【開発用】Supabase がなくても対戦を試せるダミー実装
-/// すぐに相手が見つかり、相手（CPU）は一定の間隔で通常攻撃してくる
+/// すぐに相手が見つかり、相手（CPU）は一定の間隔で通常攻撃してくる。必殺技ゲージが溜まったら必殺技を撃つ
 final class DummyBattleService: BattleService {
     /// CPU が攻撃する間隔（秒）
     private static let attackInterval: Double = 1
+    /// 必殺技ゲージが満タンになるまでの通常攻撃の回数
+    private static let attacksBeforeSpecial = Fighter.specialGaugeMax / BattleEngine.specialGaugeGain
 
-    func findOpponent(locationID: String, monster: Monster) async throws -> Monster {
+    func findOpponent(monster: Monster) async throws -> Monster {
         try await Task.sleep(for: .seconds(1.5))
         return Monster.all.randomElement()!
     }
@@ -24,13 +26,20 @@ final class DummyBattleService: BattleService {
     func opponentActions() -> AsyncThrowingStream<BattleAction, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
+                var attackCount = 0
                 while true {
                     do {
                         try await Task.sleep(for: .seconds(Self.attackInterval))
                     } catch {
                         break // キャンセルされた
                     }
-                    continuation.yield(.normalAttack)
+                    if attackCount == Self.attacksBeforeSpecial {
+                        attackCount = 0
+                        continuation.yield(.specialAttack)
+                    } else {
+                        attackCount += 1
+                        continuation.yield(.normalAttack)
+                    }
                 }
                 continuation.finish()
             }

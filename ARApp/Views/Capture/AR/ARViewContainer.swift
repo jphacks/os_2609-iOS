@@ -44,6 +44,7 @@ struct ARViewContainer: UIViewRepresentable {
         // カメラ映像から部屋の明るさや色を取り込み、モンスターを周りと同じ光で照らす
         // 自分でセッションを設定すると初期値は .none になり、暗い代わりの光で照らされる
         configuration.environmentTexturing = .automatic
+<<<<<<< HEAD
         arView.session.run(configuration, options: options)
     }
 
@@ -51,6 +52,23 @@ struct ARViewContainer: UIViewRepresentable {
     /// 出すモンスターが変わったら（タップで消えた、次が出た）、AR のモンスターを合わせる
     func updateUIView(_ uiView: ARView, context: Context) {
         context.coordinator.show(viewModel.encounter)
+=======
+        // モンスターのテクスチャは落ち着いた色なので、光を約 2.4 倍（2 の 1.25 乗）にして見やすくする
+        // 明るすぎる・暗すぎるときはこの値で調整する（0 で元の明るさ、1 で 2 倍、1.5 で約 2.8 倍）
+        arView.environment.lighting.intensityExponent = 1.25
+        arView.session.run(configuration)
+
+        context.coordinator.start(in: arView)
+
+        return arView
+    }
+
+    /// SwiftUI の状態が変わったときに呼ばれる
+    /// ここで読んだ ViewModel のプロパティ（shownMonsters）が変わるたびに、SwiftUI がもう一度呼んでくれる
+    /// shownMonsters は床の状態と出現しているモンスターから計算しているので、それらが変わったときも呼ばれる
+    func updateUIView(_ uiView: ARView, context: Context) {
+        context.coordinator.sync(viewModel.shownMonsters)
+>>>>>>> origin/main
     }
 
     /// View が画面から取り除かれるときに呼ばれる。カメラとセンサーを停止する

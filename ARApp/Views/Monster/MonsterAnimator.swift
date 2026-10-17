@@ -1,0 +1,137 @@
+//
+//  MonsterAnimator.swift
+//  ARApp
+//
+
+import Foundation
+import RealityKit
+
+/// モンスターのアニメーションを切り替える
+/// MonsterEntity.make で作ったモンスターには付いているので、どの画面からでも次のように使える
+///
+///     model.monsterAnimator?.loop(.walk)       // くり返し流す（歩く、立っているなど）
+///     model.monsterAnimator?.playOnce(.punch)  // 1 回だけ流して、くり返していたアニメーションに戻る
+///     model.monsterAnimator?.playOnce(.death, staysAtEnd: true)  // 最後のポーズのまま止まる
+///     model.monsterAnimator?.play(request)     // MonsterAnimationRequest のとおりに流す（待ってから、続けて流すなど）
+///     model.monsterAnimator?.changeLoop(to: .duck)  // くり返すアニメーションを変える（1 回だけ流している途中なら、終わってから）
+///     model.monsterAnimator?.freeze(for: 0.2)  // 今のポーズのまま少しの間止める（攻撃が当たった瞬間の「ヒットストップ」）
+///
+/// 切り替えるときは前のアニメーションと少しの間混ぜて、ポーズが急に飛ばないようにする
+final class MonsterAnimator {
+    private weak var model: Entity?
+    /// モデルに入っている、14 種類が 1 本につながったアニメーション。入っていないモデルでは nil で、何も流さない
+    private let source: AnimationResource?
+    /// くり返し流しているアニメーション。1 回だけ流すアニメーションが終わったら、これに戻る
+    private var looping = MonsterAnimation.idle
+    /// 1 回だけ流すアニメーションの途中か、最後のポーズで止まっている
+    private var isPlayingOnce = false
+    private var returnTask: Task<Void, Never>?
+    /// play(_:) で、流し始めるのを待っているタスク
+    private var requestTask: Task<Void, Never>?
+    /// 今流しているアニメーション。freeze(for:) で止めるのに使う
+    private var current: AnimationPlaybackController?
+    private var resumeTask: Task<Void, Never>?
+
+    init(model: Entity) {
+        self.model = model
+        source = model.availableAnimations.first
+    }
+
+    /// MonsterAnimationRequest のとおりにアニメーションを流す
+    /// 流している途中で次の play(_:) が呼ばれたら、前の分の残りは流さない
+    func play(_ request: MonsterAnimationRequest) {
+        requestTask?.cancel()
+        requestTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(request.delay))
+                // 途中のアニメーションは終わりのポーズで止めておき、混ぜ始める時間になったら次を流す
+                for animation in request.animations.dropLast() {
+                    self?.playOnce(animation, staysAtEnd: true, speed: request.speed)
+                    try await Task.sleep(for: .seconds((animation.duration - MonsterAnimation.transitionDuration) / request.speed))
+                }
+            } catch {
+                return
+            }
+            guard let self, let last = request.animations.last else { return }
+            switch request.ending {
+            case .backToLoop: playOnce(last, speed: request.speed)
+            case .staysAtEnd: playOnce(last, staysAtEnd: true, speed: request.speed)
+            case .repeats: loop(last)
+            }
+        }
+    }
+
+    /// くり返すアニメーションを変える（HP が減って弱ったときなど）
+    /// loop(_:) と違い、1 回だけ流している途中ならそれを止めず、終わって戻るときに切り替わる
+    /// 最後のポーズで止まっている（倒れている）間は切り替えない
+    func changeLoop(to animation: MonsterAnimation) {
+        looping = animation
+        guard !isPlayingOnce else { return }
+        play(animation, repeats: true)
+    }
+
+    /// アニメーションをくり返し流す
+    func loop(_ animation: MonsterAnimation) {
+        looping = animation
+        isPlayingOnce = false
+        returnTask?.cancel()
+        returnTask = nil
+        play(animation, repeats: true)
+    }
+
+    /// アニメーションを 1 回だけ流す。終わったら、くり返していたアニメーションに戻る
+    /// staysAtEnd を true にすると、戻らずに最後のポーズのまま止まる（倒れる Death など）
+    /// speed で流す速さを変えられる（1 で普通の速さ）
+    func playOnce(_ animation: MonsterAnimation, staysAtEnd: Bool = false, speed: Double = 1) {
+        isPlayingOnce = true
+        returnTask?.cancel()
+        returnTask = nil
+        play(animation, repeats: false, speed: speed)
+        guard !staysAtEnd else { return }
+        returnTask = Task { [weak self] in
+            // 戻るときも混ぜるので、その時間だけ早めに切り替え始める
+            try? await Task.sleep(for: .seconds((animation.duration - MonsterAnimation.transitionDuration) / speed))
+            guard let self, !Task.isCancelled else { return }
+            self.isPlayingOnce = false
+            self.play(self.looping, repeats: true)
+        }
+    }
+
+    /// 今のポーズのまま、duration 秒だけ止める。止めている間に次のアニメーションが始まったら、そちらを流す
+    /// 1 回だけ流すアニメーションの終わる時間は延びないので、短い時間だけ使う
+    func freeze(for duration: Double) {
+        guard let current else { return }
+        current.pause()
+        resumeTask?.cancel()
+        resumeTask = Task {
+            try? await Task.sleep(for: .seconds(duration))
+            current.resume()
+        }
+    }
+
+    private func play(_ animation: MonsterAnimation, repeats: Bool, speed: Double = 1) {
+        guard let model, let source else { return }
+        var definition = source.definition
+        definition.trimStart = animation.timeRange.lowerBound
+        definition.trimEnd = animation.timeRange.upperBound
+        definition.repeatMode = repeats ? .repeat : .none
+        definition.speed = Float(speed)
+        // 1 回だけ流すときは、終わったあと最後のポーズを保つ
+        definition.fillMode = .forwards
+        guard let clip = try? AnimationResource.generate(with: definition) else { return }
+        current = model.playAnimation(clip, transitionDuration: MonsterAnimation.transitionDuration)
+    }
+}
+
+/// エンティティに MonsterAnimator を持たせるためのコンポーネント（RealityKit の Component）
+/// MonsterEntity.make が付ける
+struct MonsterAnimatorComponent: Component {
+    let animator: MonsterAnimator
+}
+
+extension Entity {
+    /// MonsterEntity.make で作ったモンスターなら、アニメーションを切り替える MonsterAnimator
+    var monsterAnimator: MonsterAnimator? {
+        components[MonsterAnimatorComponent.self]?.animator
+    }
+}

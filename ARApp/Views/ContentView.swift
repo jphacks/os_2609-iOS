@@ -23,11 +23,15 @@ struct ContentView: View {
                 ARCaptureView(locationViewModel: locationViewModel, collection: monsterCollection)
             }
             Tab("バトル", systemImage: "bolt.fill") {
-                BattleView(locationViewModel: locationViewModel, service: battleService)
+                BattleView(service: battleService)
             }
         }
-        .onAppear { locationViewModel.start() }
-        .onDisappear { locationViewModel.stop() }
+        .onAppear {
+            locationViewModel.start()
+        }
+        .onDisappear {
+            locationViewModel.stop()
+        }
     }
 
     /// シミュレータには Bluetooth がないので、ダミーのビーコンで「入口」にいることにする
