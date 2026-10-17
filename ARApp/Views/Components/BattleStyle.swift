@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-/// バトル画面の見た目をそろえるための色・文字・形
+/// バトル画面の見た目をそろえるための色・文字・形。捕獲に成功したときの画面（MonsterDetailView）も同じ見た目にする
 /// 丸みを使わず、角ばった形、ビビッドな色、ぼかさない影で、格闘ゲームやパチンコのようなパキッとした見た目にする
 enum BattleStyle {
     static let pink = Color(red: 1, green: 0.1, blue: 0.55)

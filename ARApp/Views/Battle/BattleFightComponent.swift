@@ -53,7 +53,7 @@ struct BattleFightComponent: View {
     /// HP がこの割合より少なくなったら、立っている間の動きを弱った動きにする
     private static let weakHPRatio = 0.2
     /// 確定してから結果を出すまでの時間（秒）。勝ったときは「VICTORY!」を見せ、負けたときは倒れるところを見せる
-    private static let victoryDuration = 2.2
+    private static let victoryDuration = 3.5
     private static let defeatDuration = 1.2
     /// 野生のモンスターとのバトルで負けたときに、「捕獲失敗…」を見せる時間（秒）。見せ終わったら捕獲画面に戻る
     private static let captureFailedDuration = 3.5

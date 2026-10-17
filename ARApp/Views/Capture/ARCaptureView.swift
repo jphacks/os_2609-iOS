@@ -89,8 +89,7 @@ struct ARCaptureView: View {
             .overlay {
                 if let monster = viewModel.detailMonster {
                     MonsterDetailView(monster: monster) { viewModel.closeDetail() }
-                        .background(Color(.systemBackground))
-                        .transition(.move(edge: .bottom))
+                        .transition(.opacity)
                 }
             }
             .animation(.easeInOut, value: viewModel.detailMonster == nil)

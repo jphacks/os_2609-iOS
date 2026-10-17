@@ -28,7 +28,8 @@ ARApp/
 │   │   └── AR/   ARView まわり（ARKit を扱うのは Capture/AR と Battle/AR だけ）
 │   ├── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル。対戦中は AR の床の上で戦う）
 │   │   └── AR/   バトル画面の ARView まわり
-│   └── Monster/  3D モンスターの見た目とアニメーション（捕獲画面とバトル画面で共通）
+│   ├── Monster/  3D モンスターの見た目とアニメーション（捕獲画面とバトル画面で共通）
+│   └── Components/ 2 つ以上の画面で使う見た目（例：BattleStyle の色・文字・形）
 ├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦）
 └── Resources/    アプリに同梱するファイル
     └── Models/   モンスターの 3D モデル（USDZ）。Quaternius「Ultimate Monsters」（CC0）を glTF から変換したもの
