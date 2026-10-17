@@ -82,7 +82,34 @@ struct BattleFightComponent: View {
     }
 
     /// HP やボタンを並べ、後ろに AR を置き、上に演出を重ねる
+    /// 修飾子を 1 つの式に続けすぎると型チェックが終わらなくなるので、tappableLayout と分けている
     private var screen: some View {
+        tappableLayout
+            .overlay { effects }
+            .animation(.easeOut(duration: 0.3), value: viewModel.outcome)
+            .animation(.easeOut(duration: 0.3), value: isResultShown)
+            .animation(.easeOut(duration: 0.2), value: viewModel.feverEndsAt)
+            // 当たった瞬間に振動させる
+            .sensoryFeedback(trigger: impactOnOpponent?.id) { (_: UUID?, _: UUID?) -> SensoryFeedback? in
+                impactFeedback
+            }
+            // フィーバーが始まったとき、勝ったときは成功の振動、相手の必殺技の予告では警告の振動
+            .sensoryFeedback(.success, trigger: viewModel.feverEndsAt) { (_: Date?, endsAt: Date?) -> Bool in
+                endsAt != nil
+            }
+            .sensoryFeedback(.warning, trigger: viewModel.incomingDanger?.id) { (_: UUID?, id: UUID?) -> Bool in
+                id != nil
+            }
+            .sensoryFeedback(.success, trigger: viewModel.outcome) {
+                (_: BattleViewModel.Outcome?, outcome: BattleViewModel.Outcome?) -> Bool in
+                outcome == .won
+            }
+            // カメラの映像の上でも文字が読みやすいよう、暗い背景に白い文字にする
+            .environment(\.colorScheme, .dark)
+    }
+
+    /// 画面のどこをタップしても攻撃する。タップした所に波紋を出す
+    private var tappableLayout: some View {
         layout
             // 空いている所もタップできるようにする。ボタンのタップはボタンが優先される
             .contentShape(Rectangle())
@@ -98,18 +125,6 @@ struct BattleFightComponent: View {
                         .allowsHitTesting(false)
                 }
             }
-            .overlay { effects }
-            .animation(.easeOut(duration: 0.3), value: viewModel.outcome)
-            .animation(.easeOut(duration: 0.3), value: isResultShown)
-            .animation(.easeOut(duration: 0.2), value: viewModel.feverEndsAt)
-            // 当たった瞬間に振動させる
-            .sensoryFeedback(trigger: impactOnOpponent?.id) { impactFeedback }
-            // フィーバーが始まったとき、勝ったときは成功の振動、相手の必殺技の予告では警告の振動
-            .sensoryFeedback(.success, trigger: viewModel.feverEndsAt) { _, endsAt in endsAt != nil }
-            .sensoryFeedback(.warning, trigger: viewModel.incomingDanger?.id) { _, id in id != nil }
-            .sensoryFeedback(.success, trigger: viewModel.outcome) { _, outcome in outcome == .won }
-            // カメラの映像の上でも文字が読みやすいよう、暗い背景に白い文字にする
-            .environment(\.colorScheme, .dark)
     }
 
     private var layout: some View {
