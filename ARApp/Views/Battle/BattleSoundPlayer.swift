@@ -104,7 +104,7 @@ final class BattleSoundPlayer {
         }
     }
 
-    enum Wave {
+    private enum Wave {
         case sine
         case square
     }

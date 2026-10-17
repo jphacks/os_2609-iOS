@@ -28,7 +28,6 @@ struct StatBarComponent: View {
                 Text("\(value) / \(maxValue)")
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
-                    .contentTransition(.numericText(value: Double(value)))
             }
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -44,10 +43,14 @@ struct StatBarComponent: View {
             .frame(height: 12)
             .animation(.easeOut(duration: 0.15), value: value)
         }
-        // 増えたときは白く残す分がないので、すぐに追いつかせる
+        // 減ったときは、減る前の値を白く残す
+        // 増えたときは白く残す分がないので、色の付いた棒と一緒に伸ばす（先に白い棒だけが伸びて見えないようにする）
         .onChange(of: value) { oldValue, newValue in
-            if newValue > oldValue { trailValue = newValue }
-            else if trailValue == nil { trailValue = oldValue }
+            if newValue > oldValue {
+                trailValue = nil
+            } else if trailValue == nil {
+                trailValue = oldValue
+            }
         }
         .task(id: value) {
             do {

@@ -438,6 +438,8 @@ final class BattleARSceneController {
         emitter.emitterShape = .cylinder
         emitter.emitterShapeSize = [height * 0.6, height * 0.2, height * 0.6]
         emitter.birthLocation = .surface
+        // 筒の表面から外向きではなく、上に向かって立ちのぼらせる
+        emitter.birthDirection = .world
         emitter.emissionDirection = [0, 1, 0]
         emitter.speed = 0.4
         emitter.speedVariation = 0.2
