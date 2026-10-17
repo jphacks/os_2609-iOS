@@ -80,6 +80,8 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
 
 - Xcode のファイルシステム同期グループを使っているため、`ARApp/` 配下にファイルを置けば自動でターゲットに含まれる（pbxproj の編集は不要）。
 - Info.plist は自動生成（`GENERATE_INFOPLIST_FILE = YES`）。キーを追加するときは pbxproj の `INFOPLIST_KEY_*` ビルド設定を使う。
+- 署名（Team ID と Bundle ID の接頭辞）は `Config/Base.xcconfig` と、各自の `Config/Signing.xcconfig.local`（.gitignore 済み。`Signing.xcconfig.local.example` をコピーして作る）で設定する。pbxproj に `DEVELOPMENT_TEAM` を書かない。
+  - xcconfig はターゲットのビルド設定に付ける。プロジェクト全体に付けると、Xcode 27.2 beta が実行のたびに Team ID を pbxproj に書き戻す。
 - デプロイメントターゲットは iOS 26.2。デフォルトのアクター隔離は `MainActor`。
 - AR は実機でのみ動作する。シミュレータでは非対応メッセージが表示される。
 - 対戦は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/schema.sql`。

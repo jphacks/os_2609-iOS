@@ -11,3 +11,6 @@ build/
 
 # macOS
 .DS_Store
+
+# 各自の署名設定（Config/Signing.xcconfig.local）
+*.xcconfig.local
