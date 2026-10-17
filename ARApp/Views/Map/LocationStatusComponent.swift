@@ -23,7 +23,7 @@ struct LocationStatusComponent: View {
                 .font(.headline)
             if !viewModel.currentRSSI.isEmpty {
                 // 地点を登録するときに控える値
-                Text("RSSI \(viewModel.currentRSSI.map(String.init).joined(separator: ", "))")
+                Text(rssiText)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -31,6 +31,13 @@ struct LocationStatusComponent: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var rssiText: String {
+        Location.beaconIDs.compactMap { beaconName in
+            viewModel.currentRSSI[beaconName].map { "\(beaconName) \($0)" }
+        }
+        .joined(separator: ", ")
     }
 }
 

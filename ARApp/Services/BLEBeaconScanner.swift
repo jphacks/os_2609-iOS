@@ -57,7 +57,7 @@ final class BLEBeaconScanner: NSObject, BeaconScanner, CBCentralManagerDelegate 
     /// 広告名の前後の空白や大文字・小文字の違いを吸収して、登録済みの正式なビーコン名を返す
     private static func beaconName(for advertisedName: String) -> String? {
         let normalized = advertisedName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return Location.beaconNames.first {
+        return Location.beaconIDs.first {
             $0.compare(normalized, options: .caseInsensitive) == .orderedSame
         }
     }

@@ -10,42 +10,51 @@ import SwiftUI
 struct IndoorMapComponent: View {
     let locations: [Location]
     let currentLocation: Location?
-    /// プレイヤーを描く位置。地点と地点の間のこともある
+    /// プレイヤーを描く位置。推定したチェックポイントの座標
     let currentPosition: MapPosition?
+    let confidence: LocationConfidence
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack {
-                Image("VenueMap")
+                Image("map")
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
                     .accessibilityLabel("会場マップ")
 
                 ForEach(locations) { location in
                     LocationMarkerComponent(location: location, isCurrent: location.id == currentLocation?.id)
-                        .position(point(for: location.position, in: size))
+                        .position(point(for: location.iconPosition, in: size))
                 }
 
                 // プレイヤーは一番手前に描く
                 if let currentPosition {
                     Image(systemName: "figure.walk.circle.fill")
                         .font(.system(size: 36))
-                        .foregroundStyle(.white, .blue)
+                        .foregroundStyle(.white, color(for: confidence))
                         .position(point(for: currentPosition, in: size))
                 }
             }
-            // 位置は推定し直すたびに飛ぶので、少しだけ時間をかけて動かす
-            // 次の測定の間は止めておきたいので、測定時間（2 秒）より十分短くする
+            // 推定の切り替わりを少しだけ滑らかにする
             .animation(.easeInOut(duration: 0.5), value: currentPosition)
         }
-        .aspectRatio(3 / 2, contentMode: .fit)
+        // map.png は 1063 × 1799 の縦長。画像全体と正規化座標を一致させる
+        .aspectRatio(1063.0 / 1799.0, contentMode: .fit)
         .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 24))
     }
 
     private func point(for position: MapPosition, in size: CGSize) -> CGPoint {
         CGPoint(x: position.x * size.width, y: position.y * size.height)
+    }
+
+    private func color(for confidence: LocationConfidence) -> Color {
+        switch confidence {
+        case .high: .blue
+        case .medium: .orange
+        case .low, .unavailable: .gray
+        }
     }
 }
 
@@ -74,7 +83,8 @@ private struct LocationMarkerComponent: View {
     IndoorMapComponent(
         locations: Location.registered,
         currentLocation: Location.registered[0],
-        currentPosition: Location.registered[0].position
+        currentPosition: Location.registered[0].iconPosition,
+        confidence: .high
     )
     .padding()
 }
