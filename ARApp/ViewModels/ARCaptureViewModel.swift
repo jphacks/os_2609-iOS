@@ -27,6 +27,9 @@ final class ARCaptureViewModel {
     /// 画面に出している捕獲の結果。出していなければ nil
     private(set) var captureOutcome: CaptureOutcome?
 
+    /// 詳細画面に出している、捕獲したモンスター。詳細画面を開いていなければ nil
+    private(set) var detailMonster: Monster?
+
     /// 捕獲の結果を出してから次へ進むまで待つタスク
     private var outcomeTask: Task<Void, Never>?
 
@@ -70,8 +73,24 @@ final class ARCaptureViewModel {
             try? await Task.sleep(for: Self.outcomeDisplayDuration)
             guard !Task.isCancelled else { return }
             captureOutcome = nil
-            // 【仮】詳細画面ができるまでは、捕獲成功でもそのまま次のモンスターを出す
-            encounter = .random()
+            if won {
+                // 次のモンスターは、詳細画面を閉じたときに出す
+                detailMonster = opponent
+            } else {
+                encounter = .random()
+            }
         }
     }
+
+    /// 詳細画面を閉じて AR に戻り、次のモンスターを出す
+    func closeDetail() {
+        guard detailMonster != nil else { return }
+        detailMonster = nil
+        encounter = .random()
+    }
+}
+
+/// 詳細画面を fullScreenCover(item:) で開くために必要。モンスターは modelName で見分ける
+extension Monster: Identifiable {
+    var id: String { modelName }
 }

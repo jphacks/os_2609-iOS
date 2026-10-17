@@ -48,6 +48,12 @@ struct ARCaptureView: View {
             }
             .onAppear { isVisible = true }
             .onDisappear { isVisible = false }
+            .fullScreenCover(item: Binding(
+                get: { viewModel.detailMonster },
+                set: { if $0 == nil { viewModel.closeDetail() } }
+            )) { monster in
+                MonsterDetailView(monster: monster) { viewModel.closeDetail() }
+            }
         } else {
             ContentUnavailableView(
                 "ARに対応していません",
