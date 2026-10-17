@@ -1,5 +1,5 @@
 //
-//  IndoorMapView.swift
+//  IndoorMapComponent.swift
 //  ARApp
 //
 
@@ -7,7 +7,7 @@ import SwiftUI
 
 /// 屋内マップ本体。地点と、プレイヤーの現在地を描く
 /// 位置は `MapPosition`（0〜1 の割合）を、実際の表示サイズに掛けて求める
-struct IndoorMapView: View {
+struct IndoorMapComponent: View {
     let locations: [Location]
     let currentLocation: Location?
 
@@ -20,7 +20,7 @@ struct IndoorMapView: View {
                     .fill(Color(red: 0.62, green: 0.84, blue: 0.62))
 
                 ForEach(locations) { location in
-                    LocationMarkerView(location: location, isCurrent: location.id == currentLocation?.id)
+                    LocationMarkerComponent(location: location, isCurrent: location.id == currentLocation?.id)
                         .position(point(for: location.position, in: size))
                 }
 
@@ -43,7 +43,7 @@ struct IndoorMapView: View {
 }
 
 /// 地点の目印と名前
-private struct LocationMarkerView: View {
+private struct LocationMarkerComponent: View {
     let location: Location
     let isCurrent: Bool
 
@@ -64,6 +64,6 @@ private struct LocationMarkerView: View {
 }
 
 #Preview {
-    IndoorMapView(locations: Location.registered, currentLocation: Location.registered[0])
+    IndoorMapComponent(locations: Location.registered, currentLocation: Location.registered[0])
         .padding()
 }

@@ -14,7 +14,7 @@ struct MapView: View {
             Text(locationViewModel.statusMessage)
                 .font(.headline)
 
-            IndoorMapView(
+            IndoorMapComponent(
                 locations: Location.registered,
                 currentLocation: locationViewModel.currentLocation
             )
