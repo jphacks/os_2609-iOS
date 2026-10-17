@@ -11,8 +11,8 @@ import SwiftUI
 /// 当たったときの音は BattleSoundPlayer が鳴らす
 
 extension BattleViewModel.Hit {
-    /// 必殺技を撃つ前の溜めの動き
-    static let specialCharge = MonsterAnimation.jump
+    /// 必殺技を撃ってから、相手が受けたかよけたかが決まるまでの溜めの動き。跳んで、空中で待つ
+    static let specialCharge = MonsterAnimationRequest(animations: [.jump, .jumpIdle], ending: .repeats)
     /// 通常攻撃で、タップしてから相手に当たるまでの時間（秒）
     /// タップしてすぐに当たったと感じられるよう、攻撃の動きを待たずに、踏み込みが届くころに当てる
     static let normalImpactTime = 0.1
@@ -24,11 +24,9 @@ extension BattleViewModel.Hit {
     static let finishingDeathSpeed = 0.5
 
     /// 攻撃を始めてから相手に当たるまでの時間（秒）。のけぞり、ダメージの数字、光、音、振動をこの分だけ遅らせる
-    /// 必殺技は溜めの動きの分だけ遅くなる。溜めの動きは、終わる少し前（混ぜて切り替える時間）から攻撃の動きに切り替わる
+    /// 必殺技の溜めは結果が決まる前に流し終えているので、ここには含めない
     var impactDelay: Double {
-        isSpecial
-            ? Self.specialCharge.duration - MonsterAnimation.transitionDuration + Self.specialImpactTime
-            : Self.normalImpactTime
+        isSpecial ? Self.specialImpactTime : Self.normalImpactTime
     }
 }
 

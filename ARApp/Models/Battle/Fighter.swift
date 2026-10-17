@@ -9,16 +9,17 @@ typealias FighterID = String
 /// バトルで戦う 1 人ぶんの状態。自分も相手も同じ形で持つ
 struct Fighter {
     static let specialGaugeMax = 100
-    static let feverGaugeMax = 100
 
     let id: FighterID
     let name: String
     let maxHP: Int
     var hp: Int
-    /// 必殺技ゲージ（0〜specialGaugeMax）
+    /// 必殺技ゲージ（0〜specialGaugeMax）。満タンになると、自動で必殺技を撃つ
     var specialGauge = 0
-    /// フィーバーゲージ（0〜feverGaugeMax）
-    var feverGauge = 0
+    /// 前のフィーバーのあとに、フィーバーでない通常攻撃をした回数。少ないうちはフィーバーの抽選をしない
+    var normalAttacksSinceFever = 0
+    /// 撃たれたのに、まだ結果（受けた・よけた）を送っていない相手の必殺技の数
+    var incomingSpecials = 0
 
     init(id: FighterID, name: String, maxHP: Int) {
         self.id = id
@@ -29,6 +30,6 @@ struct Fighter {
 
     /// ゲージが満タンなら必殺技を使える
     var canUseSpecial: Bool { specialGauge >= Fighter.specialGaugeMax }
-    /// ゲージが満タンならフィーバーを始められる
-    var canUseFever: Bool { feverGauge >= Fighter.feverGaugeMax }
+    /// フィーバーを始められるか（続けてフィーバーにならないよう、間に通常攻撃を挟む）
+    var canUseFever: Bool { normalAttacksSinceFever >= BattleEngine.feverMinAttacks }
 }

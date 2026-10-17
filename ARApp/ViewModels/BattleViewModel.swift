@@ -8,6 +8,8 @@ import Observation
 
 /// 対戦画面の状態と、バトルの進行
 /// 「バトルする」を押した人どうしをマッチングし（場所は問わない）、お互いにタップで攻撃し合う
+/// 通常攻撃はスタミナを使い、使い切ると休憩になる。攻撃するたびにフィーバーの抽選をし、ときどきリーチになる
+/// 必殺技はゲージが満タンになると自動で撃つ。相手の必殺技は、予告している間にスワイプするとよけられる
 /// 自分の行動はすぐに反映して相手に送り、相手の行動は届いた順に反映する（どちらも BattleEngine で計算する）
 @Observable
 final class BattleViewModel {
@@ -34,6 +36,8 @@ final class BattleViewModel {
         let damage: Int
         /// 必殺技による攻撃か（演出を派手にする）
         let isSpecial: Bool
+        /// よけられた必殺技か（のけぞらず、横にかわす）
+        let isDodged: Bool
         /// フィーバー中の通常攻撃か（演出を派手にする）
         let isFever: Bool
         /// この攻撃で HP が 0 になったか（とどめの演出を出す）
@@ -42,19 +46,29 @@ final class BattleViewModel {
 
         init(action: BattleAction, damage: Int, isFinishing: Bool) {
             self.damage = damage
-            isSpecial = action == .specialAttack
+            isSpecial = action.resolvesSpecial
+            isDodged = action == .dodgeSpecial
             isFever = action == .feverAttack
             self.isFinishing = isFinishing
         }
     }
 
-    /// 相手の必殺技の予告。相手の必殺技が届いてから、反映するまでの間だけある
+    /// 相手の必殺技の予告。相手の必殺技が届いてから、受けたかよけたかを決めるまでの間だけある
     struct Danger: Identifiable {
         let id = UUID()
     }
 
-    /// 相手の必殺技が届いてから反映するまでの時間（秒）。この間、画面に「DANGER!」を出す
-    /// 反映を遅らせるだけで、ダメージは変わらないので、相手の端末と HP は食い違わない
+    /// よけるためにスワイプした出来事。予告の外でスワイプしても、スタミナを使って横に動く（よけたことにはならない）
+    struct Dodge: Identifiable {
+        let id = UUID()
+        /// 右へスワイプしたか。モンスターがかわす向きに使う
+        let toRight: Bool
+    }
+
+    /// リーチになってから結果が出るまでの時間（秒）。ReachComponent はこの時間に合わせてスロットを止める
+    static let reachDuration = 2.0
+
+    /// 相手の必殺技が届いてから、受けたかよけたかを決めるまでの時間（秒）。この間、画面に「DANGER!」を出し、スワイプするとよけられる
     static let dangerDuration = 1.0
 
     /// 状態の中で自分と相手を見分ける ID。どちらの端末でも、自分が myID になる
@@ -79,6 +93,18 @@ final class BattleViewModel {
     private(set) var lastHitOnMe: Hit?
     /// 予告している相手の必殺技。予告していなければ nil
     private(set) var incomingDanger: Danger?
+    /// 最後によけるためにスワイプした出来事
+    private(set) var lastDodge: Dodge?
+    /// スワイプしてよけた予告の id。予告が終わったときにこれと同じなら、よけたことになる
+    private var dodgedDangerID: UUID?
+    /// 自分のスタミナ。値は時間とともに変わるので、表示するときは value(at:) で求める
+    private(set) var stamina = Stamina()
+    /// へとへとで休憩中か。休憩が終わったら、休憩を終わらせるタスクが false にする
+    private(set) var isResting = false
+    private var restTask: Task<Void, Never>?
+    /// 回しているリーチ。リーチでなければ nil
+    private(set) var reach: FeverLottery.Reach?
+    private var reachTask: Task<Void, Never>?
     /// 自分のフィーバーが終わる時刻。フィーバー中でなければ nil
     /// 時刻で持つので、アプリがバックグラウンドにある間も時間は進む（戻ってきたときに残り時間が増えない）
     private(set) var feverEndsAt: Date?
@@ -146,23 +172,63 @@ final class BattleViewModel {
         }
     }
 
-    /// 画面がタップされたときに呼ぶ。クールダウン中は何も起きない
+    /// 画面がタップされたときに呼ぶ。クールダウン中や休憩中は何も起きない
+    /// スタミナを使い切ったら、休憩を始める
     func attack() {
         let now = ContinuousClock.now
-        guard now >= nextNormalAttackAt else { return }
-        if perform(isFeverActive ? .feverAttack : .normalAttack) {
-            nextNormalAttackAt = now + .seconds(BattleEngine.normalAttackCooldown)
+        guard now >= nextNormalAttackAt, phase == .fighting, finishTask == nil,
+              !stamina.isResting(at: .now)
+        else { return }
+        let action: BattleAction = isFeverActive ? .feverAttack : .normalAttack
+        guard perform(action) else { return }
+        nextNormalAttackAt = now + .seconds(BattleEngine.normalAttackCooldown)
+        stamina.spendForAttack(at: .now)
+        if stamina.isResting(at: .now) {
+            startRest()
+        }
+        // ゲージが満タンになったら、自動で必殺技を撃つ
+        if me?.canUseSpecial == true {
+            perform(.specialAttack)
+        }
+        if action == .normalAttack, reach == nil, me?.canUseFever == true, let drawn = FeverLottery.draw() {
+            startReach(drawn)
         }
     }
 
-    /// 必殺技ボタンが押されたときに呼ぶ。ゲージが満タンでなければ何も起きない
-    func useSpecial() {
-        perform(.specialAttack)
+    /// 画面が左右にスワイプされたときに呼ぶ。休憩中やスタミナが足りないときは何も起きない
+    /// 相手の必殺技を予告している間なら、よけたことになる
+    func dodge(toRight: Bool) {
+        guard phase == .fighting, finishTask == nil, stamina.spendForDodge(at: .now) else { return }
+        lastDodge = Dodge(toRight: toRight)
+        if let incomingDanger {
+            dodgedDangerID = incomingDanger.id
+        }
     }
 
-    /// フィーバーボタンが押されたときに呼ぶ。ゲージが満タンでなければ何も起きない
+    /// 結果を見終わったときに呼ぶ。ロビーに戻る。次の対戦では別のモンスターを使う
+    func leaveBattle() {
+        reset()
+        myMonster = Monster.all.randomElement()!
+    }
+
+    /// リーチを回し、reachDuration 秒たったら結果を出す。当たりならフィーバーを始める
+    private func startReach(_ drawn: FeverLottery.Reach) {
+        reach = drawn
+        reachTask = Task {
+            do {
+                try await Task.sleep(for: .seconds(Self.reachDuration))
+            } catch {
+                return // 対戦が終わった
+            }
+            reach = nil
+            if drawn.willWin {
+                startFever()
+            }
+        }
+    }
+
     /// feverDuration 秒の間、通常攻撃のダメージが 2 倍になる
-    func useFever() {
+    private func startFever() {
         guard !isFeverActive, perform(.fever) else { return }
         feverEndsAt = .now + BattleEngine.feverDuration
         feverTask?.cancel()
@@ -176,12 +242,6 @@ final class BattleViewModel {
         }
     }
 
-    /// 結果を見終わったときに呼ぶ。ロビーに戻る。次の対戦では別のモンスターを使う
-    func leaveBattle() {
-        reset()
-        myMonster = Monster.all.randomElement()!
-    }
-
     /// 対戦や相手探しをやめて、ロビーの状態に戻す
     /// 自分のモンスターはここでは選び直さない（対戦できなかったときは、同じモンスターでやり直す）
     private func reset() {
@@ -190,6 +250,7 @@ final class BattleViewModel {
         finishTask?.cancel()
         finishTask = nil
         endFever()
+        endRest()
         leaveTask = Task { await service.leave() }
         state = nil
         opponentMonster = nil
@@ -197,6 +258,8 @@ final class BattleViewModel {
         lastHitOnOpponent = nil
         lastHitOnMe = nil
         incomingDanger = nil
+        lastDodge = nil
+        dodgedDangerID = nil
         phase = .lobby
     }
 
@@ -208,6 +271,7 @@ final class BattleViewModel {
             Fighter(id: Self.opponentID, name: opponentMonster.name, maxHP: BattleEngine.maxHP)
         )
         nextNormalAttackAt = .now
+        stamina = Stamina()
         phase = .fighting
         receiveOpponentActions()
     }
@@ -217,21 +281,22 @@ final class BattleViewModel {
         receiveTask = Task {
             do {
                 for try await action in service.opponentActions() {
-                    // 相手の必殺技は、予告してから反映する
-                    // 予告している間に届いた相手の行動は、そのあとに順番に反映する
-                    if action == .specialAttack, opponent?.canUseSpecial == true {
-                        incomingDanger = Danger()
-                        try await Task.sleep(for: .seconds(Self.dangerDuration))
-                        incomingDanger = nil
-                    }
                     guard var state,
                           let damage = BattleEngine.apply(action, by: Self.opponentID, to: &state)
                     else { continue }
                     self.state = state
-                    if action.isAttack {
-                        lastHitOnMe = Hit(action: action, damage: damage, isFinishing: state.winner != nil)
-                    }
+                    recordHit(of: action, by: Self.opponentID, damage: damage)
                     if state.winner != nil { break }
+                    // 相手が必殺技を撃ったら予告し、その間にスワイプしたかどうかで、受けたかよけたかを送り返す
+                    // 予告している間に届いた相手の行動は、そのあとに順番に反映する
+                    if action == .specialAttack {
+                        let danger = Danger()
+                        incomingDanger = danger
+                        try await Task.sleep(for: .seconds(Self.dangerDuration))
+                        incomingDanger = nil
+                        perform(dodgedDangerID == danger.id ? .dodgeSpecial : .takeSpecial)
+                        if self.state?.winner != nil { break }
+                    }
                 }
                 // 自分の端末で決着がついた、または相手の端末で決着がついて受け取りが終わった
                 guard !Task.isCancelled else { return }
@@ -251,14 +316,31 @@ final class BattleViewModel {
               let damage = BattleEngine.apply(action, by: Self.myID, to: &state)
         else { return false }
         self.state = state
-        if action.isAttack {
-            lastHitOnOpponent = Hit(action: action, damage: damage, isFinishing: state.winner != nil)
-        }
+        recordHit(of: action, by: Self.myID, damage: damage)
         service.send(action)
         if state.winner != nil {
             confirmOutcome()
         }
         return true
+    }
+
+    /// ダメージを与えた行動なら、受けた側への攻撃として記録する（画面の演出のきっかけになる）
+    /// 通常攻撃は行動した人の相手が、必殺技の結果は行動した本人がダメージを受ける
+    private func recordHit(of action: BattleAction, by actor: FighterID, damage: Int) {
+        let target: FighterID
+        if action.hitsOpponent {
+            target = actor == Self.myID ? Self.opponentID : Self.myID
+        } else if action.resolvesSpecial {
+            target = actor
+        } else {
+            return
+        }
+        let hit = Hit(action: action, damage: damage, isFinishing: state?.winner != nil)
+        if target == Self.myID {
+            lastHitOnMe = hit
+        } else {
+            lastHitOnOpponent = hit
+        }
     }
 
     /// 相手の行動の受け取りをやめて、決着を確定させる
@@ -267,6 +349,7 @@ final class BattleViewModel {
         receiveTask?.cancel()
         incomingDanger = nil
         endFever()
+        endRest()
         let iWon = state?.winner == Self.myID
         finishTask = Task {
             do {
@@ -281,9 +364,32 @@ final class BattleViewModel {
     }
 
     private func endFever() {
+        reachTask?.cancel()
+        reachTask = nil
+        reach = nil
         feverTask?.cancel()
         feverTask = nil
         feverEndsAt = nil
+    }
+
+    /// へとへとになったときに呼ぶ。休憩が終わったら isResting を false に戻す
+    private func startRest() {
+        isResting = true
+        restTask?.cancel()
+        restTask = Task {
+            do {
+                try await Task.sleep(for: .seconds(Stamina.restDuration))
+            } catch {
+                return // 対戦が終わった
+            }
+            isResting = false
+        }
+    }
+
+    private func endRest() {
+        restTask?.cancel()
+        restTask = nil
+        isResting = false
     }
 
     /// 相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る

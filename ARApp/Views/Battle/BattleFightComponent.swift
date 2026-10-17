@@ -5,8 +5,9 @@
 
 import SwiftUI
 
-/// 対戦中の画面。後ろの AR の床の上でモンスター同士が戦い、その上に HP やゲージ、必殺技・フィーバーのボタンを重ねる
-/// 当たったときの音と振動、フィーバー・相手の必殺技の予告・勝利の演出もここで出す
+/// 対戦中の画面。後ろの AR の床の上でモンスター同士が戦い、その上に HP やゲージを重ねる
+/// 操作は 2 つだけ。画面をタップすると通常攻撃、左右にスワイプするとよける（必殺技とフィーバーは自動）
+/// 当たったときの音と振動、リーチ・フィーバー・相手の必殺技の予告・勝利の演出もここで出す
 /// 1 回の対戦の中だけで使う見た目の状態（流すアニメーション、続けて当てた回数など）はここに持つ
 /// 対戦が終わるとこの View ごとなくなるので、次の対戦には前の状態が残らない
 struct BattleFightComponent: View {
@@ -27,6 +28,8 @@ struct BattleFightComponent: View {
     /// 流すと、必殺技の溜めや攻撃の動きが途中で切れてしまうため（倒れるときだけは流す）
     @State private var mySpecialEndsAt = Date.distantPast
     @State private var opponentSpecialEndsAt = Date.distantPast
+    /// 最後によけた・よけられた必殺技。「よけた！」「よけられた…」を出すのに使う
+    @State private var lastDodgedHit: BattleViewModel.Hit?
     /// 最後に相手へ当たった必殺技かとどめ。画面を光らせるのに使う
     /// lastHitOnOpponent を見ると、光る前に次の通常攻撃が当たったときに、光る演出ごと消えてしまう
     @State private var lastFlashHitOnOpponent: BattleViewModel.Hit?
@@ -47,9 +50,11 @@ struct BattleFightComponent: View {
     /// 確定してから結果を出すまでの時間（秒）。勝ったときは「VICTORY!」を見せ、負けたときは倒れるところを見せる
     private static let victoryDuration = 2.2
     private static let defeatDuration = 1.2
+    /// この距離（pt）より指を動かしたら、タップではなくスワイプ（よける）にする
+    private static let swipeDistance: CGFloat = 30
 
     var body: some View {
-        screen
+        screenWithEvents
             // HP は引数の me / opponent ではなく viewModel から読む（引数は前に描いたときの値のことがある）
             .onChange(of: viewModel.lastHitOnOpponent?.id) { onHitOnOpponent() }
             // 当てるたびに待ち直し、次を当てないまま時間が過ぎたら、続けて当てた回数を 0 に戻す
@@ -62,16 +67,6 @@ struct BattleFightComponent: View {
                 comboCount = 0
             }
             .onChange(of: viewModel.lastHitOnMe?.id) { onHitOnMe() }
-            .onChange(of: viewModel.feverEndsAt) {
-                if viewModel.feverEndsAt != nil {
-                    BattleSoundPlayer.shared.play(.feverStart)
-                }
-            }
-            .onChange(of: viewModel.incomingDanger?.id) {
-                if viewModel.incomingDanger != nil {
-                    BattleSoundPlayer.shared.play(.danger)
-                }
-            }
             // 決着が確定したら、少し待ってから結果を出す
             .task(id: viewModel.outcome) {
                 guard let outcome = viewModel.outcome else { return }
@@ -79,6 +74,37 @@ struct BattleFightComponent: View {
                 isResultShown = true
             }
             .onChange(of: viewModel.outcome) { onOutcome() }
+    }
+
+    /// リーチ・フィーバー・必殺技が始まったときに、音を鳴らしたり溜めの動きを流したりする
+    /// 修飾子を 1 つの式に続けすぎると型チェックが終わらなくなるので、body と分けている
+    private var screenWithEvents: some View {
+        screen
+            .onChange(of: viewModel.reach?.id) {
+                if let reach = viewModel.reach {
+                    BattleSoundPlayer.shared.play(reach.isHot ? .hotReach : .reach)
+                }
+            }
+            .onChange(of: viewModel.feverEndsAt) {
+                if viewModel.feverEndsAt != nil {
+                    BattleSoundPlayer.shared.play(.feverStart)
+                }
+            }
+            // 相手が必殺技を撃ったら、結果が決まるまで相手のモンスターが溜める
+            .onChange(of: viewModel.incomingDanger?.id) {
+                if viewModel.incomingDanger != nil {
+                    BattleSoundPlayer.shared.play(.danger)
+                    opponentSpecialEndsAt = .distantFuture
+                    opponentAnimation = BattleViewModel.Hit.specialCharge
+                }
+            }
+            // 自分が必殺技を撃ったら（相手の受け取っていない必殺技が増えたら）、結果が届くまで自分のモンスターが溜める
+            .onChange(of: viewModel.opponent?.incomingSpecials ?? 0) { old, new in
+                if new > old {
+                    mySpecialEndsAt = .distantFuture
+                    myAnimation = BattleViewModel.Hit.specialCharge
+                }
+            }
     }
 
     /// HP やボタンを並べ、後ろに AR を置き、上に演出を重ねる
@@ -89,6 +115,7 @@ struct BattleFightComponent: View {
             .animation(.easeOut(duration: 0.3), value: viewModel.outcome)
             .animation(.easeOut(duration: 0.3), value: isResultShown)
             .animation(.easeOut(duration: 0.2), value: viewModel.feverEndsAt)
+            .animation(.easeOut(duration: 0.2), value: viewModel.reach?.id)
             // 当たった瞬間に振動させる
             .sensoryFeedback(trigger: impactOnOpponent?.id) { (_: UUID?, _: UUID?) -> SensoryFeedback? in
                 impactFeedback
@@ -97,8 +124,16 @@ struct BattleFightComponent: View {
             .sensoryFeedback(.success, trigger: viewModel.feverEndsAt) { (_: Date?, endsAt: Date?) -> Bool in
                 endsAt != nil
             }
+            .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.reach?.id) { (_: UUID?, id: UUID?) -> Bool in
+                id != nil
+            }
             .sensoryFeedback(.warning, trigger: viewModel.incomingDanger?.id) { (_: UUID?, id: UUID?) -> Bool in
                 id != nil
+            }
+            // よけるためにスワイプしたら軽く振動させ、へとへとになったらエラーの振動で知らせる
+            .sensoryFeedback(.impact(weight: .light), trigger: viewModel.lastDodge?.id)
+            .sensoryFeedback(.error, trigger: viewModel.isResting) { (_: Bool, isResting: Bool) -> Bool in
+                isResting
             }
             .sensoryFeedback(.success, trigger: viewModel.outcome) {
                 (_: BattleViewModel.Outcome?, outcome: BattleViewModel.Outcome?) -> Bool in
@@ -108,15 +143,26 @@ struct BattleFightComponent: View {
             .environment(\.colorScheme, .dark)
     }
 
-    /// 画面のどこをタップしても攻撃する。タップした所に波紋を出す
+    /// 画面のどこをタップしても攻撃する。タップした所に波紋を出す。左右にスワイプするとよける
     private var tappableLayout: some View {
         layout
             // 空いている所もタップできるようにする。ボタンのタップはボタンが優先される
             .contentShape(Rectangle())
-            .onTapGesture { location in
-                tapRipple = TapRipple(location: location)
-                viewModel.attack()
-            }
+            // 指を動かしたらスワイプ、動かさずに離したらタップにする
+            .gesture(
+                DragGesture(minimumDistance: Self.swipeDistance)
+                    .onEnded { value in
+                        let move = value.translation
+                        guard abs(move.width) > abs(move.height) else { return }
+                        viewModel.dodge(toRight: move.width > 0)
+                    }
+                    .exclusively(
+                        before: SpatialTapGesture().onEnded { value in
+                            tapRipple = TapRipple(location: value.location)
+                            viewModel.attack()
+                        }
+                    )
+            )
             .overlay {
                 if let tapRipple {
                     TapRippleComponent()
@@ -136,61 +182,44 @@ struct BattleFightComponent: View {
 
             // 2. 中央：後ろの AR の床の上で戦うモンスターが見えるように空けておく。右上に、続けて当てた回数を出す
             // 回数を出していない間も場所を取るように、透明な View に重ねる（ComboComponent は回数が少ないと空になる）
+            // へとへとで休憩している間は、下の方に「へとへと…」と出す
             Color.clear
                 .overlay(alignment: .topTrailing) {
                     ComboComponent(count: comboCount)
                 }
+                .overlay(alignment: .bottom) {
+                    if viewModel.isResting {
+                        RestComponent()
+                    }
+                }
 
-            // 3. 下部：自分の HP、必殺技ゲージ、フィーバーゲージ
+            // 3. 下部：自分の HP、スタミナ、必殺技ゲージ、フィーバーゲージ
             VStack(spacing: 8) {
                 StatBarComponent(title: me.name, value: me.hp, maxValue: me.maxHP, color: .green)
+                StaminaBarComponent(stamina: viewModel.stamina, isResting: viewModel.isResting)
                 StatBarComponent(
-                    title: "必殺技ゲージ",
+                    title: "必殺技ゲージ（満タンで発動）",
                     value: me.specialGauge,
                     maxValue: Fighter.specialGaugeMax,
-                    color: me.canUseSpecial ? .orange : .yellow
-                )
-                StatBarComponent(
-                    title: "フィーバーゲージ",
-                    value: me.feverGauge,
-                    maxValue: Fighter.feverGaugeMax,
-                    color: me.canUseFever ? .pink : .purple
+                    color: .yellow
                 )
             }
             .padding(12)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-
-            // 4. 最下部：必殺技とフィーバーのボタン
-            HStack {
-                Button {
-                    viewModel.useSpecial()
-                } label: {
-                    Label(me.canUseSpecial ? "必殺技 READY!" : "必殺技", systemImage: "bolt.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.yellow)
-                .disabled(!me.canUseSpecial)
-
-                FeverButtonComponent(canUse: me.canUseFever, endsAt: viewModel.feverEndsAt) {
-                    viewModel.useFever()
-                }
-            }
         }
         .padding()
         .background {
             BattleArenaComponent(
                 myMonster: myMonster,
                 opponentMonster: opponentMonster,
-                myIdle: idleAnimation(of: me),
+                myIdle: myIdleAnimation,
                 opponentIdle: idleAnimation(of: opponent),
                 myAnimation: myAnimation,
                 opponentAnimation: opponentAnimation,
                 hitOnOpponent: viewModel.lastHitOnOpponent,
                 hitOnMe: viewModel.lastHitOnMe,
                 danger: viewModel.incomingDanger,
+                myDodge: viewModel.lastDodge,
                 isFeverActive: viewModel.feverEndsAt != nil,
                 isVictory: viewModel.outcome == .won,
                 isVisible: isVisible
@@ -202,16 +231,20 @@ struct BattleFightComponent: View {
 
     private func onHitOnOpponent() {
         guard let hit = viewModel.lastHitOnOpponent, let opponent = viewModel.opponent else { return }
-        if hit.isSpecial || hit.isFinishing {
+        if (hit.isSpecial && !hit.isDodged) || hit.isFinishing {
             lastFlashHitOnOpponent = hit
         }
+        if hit.isDodged {
+            lastDodgedHit = hit
+        }
         if hit.isSpecial {
-            mySpecialEndsAt = .now + Self.specialDuration(of: myMonster)
+            mySpecialEndsAt = .now + myMonster.specialAttack.duration
             myAnimation = attackAnimation(of: myMonster, hit: hit)
         } else if Date.now >= mySpecialEndsAt {
             myAnimation = attackAnimation(of: myMonster, hit: hit)
         }
-        if opponent.hp == 0 || Date.now >= opponentSpecialEndsAt {
+        // よけたときは、のけぞらずに横へかわす（かわす動きは BattleARSceneController が付ける）
+        if opponent.hp == 0 || (!hit.isDodged && Date.now >= opponentSpecialEndsAt) {
             opponentAnimation = reactionAnimation(hp: opponent.hp, hit: hit)
         }
         comboCount += 1
@@ -220,13 +253,17 @@ struct BattleFightComponent: View {
 
     private func onHitOnMe() {
         guard let hit = viewModel.lastHitOnMe, let me = viewModel.me else { return }
+        if hit.isDodged {
+            lastDodgedHit = hit
+        }
         if hit.isSpecial {
-            opponentSpecialEndsAt = .now + Self.specialDuration(of: opponentMonster)
+            opponentSpecialEndsAt = .now + opponentMonster.specialAttack.duration
             opponentAnimation = attackAnimation(of: opponentMonster, hit: hit)
         } else if Date.now >= opponentSpecialEndsAt {
             opponentAnimation = attackAnimation(of: opponentMonster, hit: hit)
         }
-        if me.hp == 0 || Date.now >= mySpecialEndsAt {
+        // よけたときは、スワイプしたときにもうかわしているので、のけぞらない
+        if me.hp == 0 || (!hit.isDodged && Date.now >= mySpecialEndsAt) {
             myAnimation = reactionAnimation(hp: me.hp, hit: hit)
         }
     }
@@ -264,7 +301,17 @@ struct BattleFightComponent: View {
                 DangerComponent()
                     .id(danger.id)
             }
-            // 必殺技やとどめが当たった瞬間（溜めのあと）、画面全体を光らせる。とどめは白く光らせる
+            // フィーバーのリーチ。スロットが回っている間も攻撃できるよう、タップは下に通す
+            if let reach = viewModel.reach {
+                ReachComponent(reach: reach)
+                    .id(reach.id)
+            }
+            // 必殺技をよけた・よけられた
+            if let hit = lastDodgedHit {
+                DodgeComponent(isMine: hit.id == viewModel.lastHitOnMe?.id)
+                    .id(hit.id)
+            }
+            // 必殺技やとどめが当たった瞬間、画面全体を光らせる。とどめは白く光らせる
             if let hit = lastFlashHitOnOpponent {
                 FlashComponent(color: hit.isFinishing ? .white : .yellow, delay: hit.impactDelay)
                     .id(hit.id)
@@ -290,7 +337,7 @@ struct BattleFightComponent: View {
     private func playImpact(of hit: BattleViewModel.Hit) {
         let sound: BattleSoundPlayer.Sound = if hit.isFinishing {
             .finishHit
-        } else if hit.isSpecial {
+        } else if hit.isSpecial && !hit.isDodged {
             .specialHit
         } else if hit.isFever {
             .feverHit
@@ -307,7 +354,7 @@ struct BattleFightComponent: View {
     /// 相手に当たった瞬間の振動。通常攻撃は連打しても疲れないよう軽く短く、必殺技ととどめは重く
     private var impactFeedback: SensoryFeedback? {
         guard let hit = impactOnOpponent else { return nil }
-        if hit.isSpecial || hit.isFinishing { return .impact(weight: .heavy, intensity: 1) }
+        if (hit.isSpecial && !hit.isDodged) || hit.isFinishing { return .impact(weight: .heavy, intensity: 1) }
         return .impact(flexibility: .rigid, intensity: hit.isFever ? 1 : 0.8)
     }
 
@@ -316,16 +363,14 @@ struct BattleFightComponent: View {
         Double(fighter.hp) < Double(fighter.maxHP) * Self.weakHPRatio ? .duck : .idle
     }
 
-    /// 攻撃する側のアニメーション。必殺技は、溜めの動きのあとに攻撃する
-    private func attackAnimation(of monster: Monster, hit: BattleViewModel.Hit) -> MonsterAnimationRequest {
-        hit.isSpecial
-            ? MonsterAnimationRequest(animations: [BattleViewModel.Hit.specialCharge, monster.specialAttack])
-            : MonsterAnimationRequest(animations: [monster.normalAttack])
+    /// 自分が立っている間にくり返すアニメーション。へとへとで休憩している間も、しゃがんで動けなくなる
+    private var myIdleAnimation: MonsterAnimation {
+        viewModel.isResting ? .duck : idleAnimation(of: me)
     }
 
-    /// 必殺技の動き（溜め → 攻撃）を流し終わるまでの時間（秒）
-    private static func specialDuration(of monster: Monster) -> Double {
-        BattleViewModel.Hit.specialCharge.duration - MonsterAnimation.transitionDuration + monster.specialAttack.duration
+    /// 攻撃する側のアニメーション。必殺技の溜めは、撃ったときに流し始めている
+    private func attackAnimation(of monster: Monster, hit: BattleViewModel.Hit) -> MonsterAnimationRequest {
+        MonsterAnimationRequest(animations: [hit.isSpecial ? monster.specialAttack : monster.normalAttack])
     }
 
     /// 攻撃を受けた側のアニメーション。攻撃が当たるタイミングでのけぞり、HP が 0 になったら倒れたままになる

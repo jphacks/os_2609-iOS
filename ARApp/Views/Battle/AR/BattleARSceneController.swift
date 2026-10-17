@@ -10,7 +10,7 @@ import Combine
 
 /// バトル画面の ARView のシーンを操作する
 /// 担当：床が見つかったら自分と相手のモンスターを置くこと、アニメーション（立っている間の動きも）を流すこと、
-/// 攻撃したときに踏み込ませること、攻撃が当たったら受けた側を光らせて火花とダメージの数字を出すこと、
+/// 攻撃したときに踏み込ませること、よけるときに横にかわさせること、攻撃が当たったら受けた側を光らせて火花とダメージの数字を出すこと、
 /// フィーバー中に自分のモンスターから金色の光を出すこと、相手の必殺技の予告で相手を赤く光らせること、勝ったときに金色の火花を散らすこと
 final class BattleARSceneController {
     /// 光らせる、モデルの部品 1 つぶん。元のマテリアルと光らせたマテリアルを持っておき、入れ替える
@@ -35,6 +35,10 @@ final class BattleARSceneController {
     /// 攻撃するときに相手の方へ踏み込む距離（m）と、踏み込むのにかける時間（秒）
     static let lungeDistance: Float = 0.25
     static let lungeDuration: TimeInterval = 0.12
+    /// よけるときに横へ動く距離（m）と、動くのにかける時間（秒）、横にいる時間（秒）
+    static let sidestepDistance: Float = 0.3
+    static let sidestepDuration: TimeInterval = 0.1
+    static let sidestepHold: TimeInterval = 0.3
     /// ダメージの数字の文字の高さ（m）。通常攻撃と必殺技
     static let damageFontSize: CGFloat = 0.18
     static let feverDamageFontSize: CGFloat = 0.26
@@ -91,6 +95,7 @@ final class BattleARSceneController {
     private var hitOnOpponentID: UUID?
     private var hitOnMeID: UUID?
     private var dangerID: UUID?
+    private var myDodgeID: UUID?
     /// フィーバー中か。置く前に受け取った分は、置いたときに反映する
     private var isFeverActive = false
     private var isVictory = false
@@ -145,6 +150,7 @@ final class BattleARSceneController {
         hitOnOpponent: BattleViewModel.Hit?,
         hitOnMe: BattleViewModel.Hit?,
         danger: BattleViewModel.Danger?,
+        myDodge: BattleViewModel.Dodge?,
         isFeverActive: Bool,
         isVictory: Bool
     ) {
@@ -166,9 +172,20 @@ final class BattleARSceneController {
             self.opponentAnimation = opponentAnimation
             opponentEntity?.monsterAnimator?.play(opponentAnimation)
         }
+        if let myDodge, myDodge.id != myDodgeID {
+            myDodgeID = myDodge.id
+            sidestep(myEntity, from: myHome, facing: opponentHome, toRight: myDodge.toRight)
+        }
         if let hitOnOpponent, hitOnOpponent.id != hitOnOpponentID {
             hitOnOpponentID = hitOnOpponent.id
             lunge(myEntity, from: myHome, toward: opponentHome)
+            // 相手によけられたら、当たるタイミングで相手が横にかわす
+            if hitOnOpponent.isDodged {
+                sidestep(
+                    opponentEntity, from: opponentHome, facing: myHome, toRight: .random(),
+                    delay: hitOnOpponent.impactDelay - Self.sidestepDuration
+                )
+            }
             let color: UIColor = if hitOnOpponent.isFinishing || hitOnOpponent.isFever {
                 Self.gold
             } else if hitOnOpponent.isSpecial {
@@ -289,6 +306,23 @@ final class BattleARSceneController {
         Task {
             try? await Task.sleep(for: .seconds(Self.lungeDuration))
             entity.move(to: home, relativeTo: entity.parent, duration: Self.lungeDuration * 2, timingFunction: .easeInOut)
+        }
+    }
+
+    /// delay 秒待ってから、横に素早く動き、少しして元の場所に戻る（よける演出）
+    /// toRight は、モンスターから見た右（手前にいる自分のモンスターなら、カメラから見た右とほぼ同じ）
+    private func sidestep(_ entity: Entity?, from home: Transform, facing target: Transform, toRight: Bool, delay: Double = 0) {
+        guard let entity else { return }
+        // 相手の方向を床の上で 90 度回すと、モンスターから見た右になる
+        let forward = simd_normalize(target.translation - home.translation)
+        let right = SIMD3(-forward.z, 0, forward.x)
+        var stepped = home
+        stepped.translation += right * (toRight ? Self.sidestepDistance : -Self.sidestepDistance)
+        Task {
+            try? await Task.sleep(for: .seconds(max(delay, 0)))
+            entity.move(to: stepped, relativeTo: entity.parent, duration: Self.sidestepDuration, timingFunction: .easeOut)
+            try? await Task.sleep(for: .seconds(Self.sidestepDuration + Self.sidestepHold))
+            entity.move(to: home, relativeTo: entity.parent, duration: Self.sidestepDuration * 2, timingFunction: .easeInOut)
         }
     }
 

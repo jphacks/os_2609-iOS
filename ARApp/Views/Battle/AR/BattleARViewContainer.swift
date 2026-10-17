@@ -86,6 +86,8 @@ struct BattleARViewContainer: UIViewRepresentable {
     let hitOnMe: BattleViewModel.Hit?
     /// 相手の必殺技の予告。変わるたびに、相手のモンスターが赤く点滅する
     let danger: BattleViewModel.Danger?
+    /// よけるためにスワイプした出来事。変わるたびに、自分のモンスターが横にかわす
+    let myDodge: BattleViewModel.Dodge?
     /// フィーバー中は、自分のモンスターから金色の光が立ちのぼる
     let isFeverActive: Bool
     /// 勝ちが確定したら、自分のモンスターから金色の火花が散る
@@ -127,6 +129,7 @@ struct BattleARViewContainer: UIViewRepresentable {
             hitOnOpponent: hitOnOpponent,
             hitOnMe: hitOnMe,
             danger: danger,
+            myDodge: myDodge,
             isFeverActive: isFeverActive,
             isVictory: isVictory
         )

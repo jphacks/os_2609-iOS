@@ -21,7 +21,7 @@ struct DangerComponent: View {
                 Text("DANGER!")
                     .font(.system(size: 56, weight: .black, design: .rounded))
                     .italic()
-                Text("相手の必殺技が来る！")
+                Text("左右にスワイプでよけろ！")
                     .font(.headline)
             }
             .foregroundStyle(.red)
