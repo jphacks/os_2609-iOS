@@ -14,16 +14,6 @@ import Combine
 /// フィーバー中に自分のモンスターから金色の光を出すこと、相手の必殺技の予告で相手を赤く光らせること、勝ったときに金色の火花を散らすこと、
 /// 相手のモンスターが画面の外にいるときに、その方向を矢印で示すこと
 final class BattleARSceneController {
-    /// 光らせる、モデルの部品 1 つぶん。元のマテリアルと光らせたマテリアルを持っておき、入れ替える
-    private struct FlashPart {
-        let entity: Entity
-        let original: [any Material]
-        /// 攻撃が当たったとき（白）
-        let lit: [any Material]
-        /// 相手の必殺技の予告（赤）
-        let warning: [any Material]
-    }
-
     /// モンスターの大きさ。現実の大きさ（Monster.size）に掛ける
     /// 手前の自分のモンスターは、現実の大きさのままだと画面からはみ出すので小さくする
     /// 相手は、自分より大きくして見やすくする
@@ -54,10 +44,16 @@ final class BattleARSceneController {
     static let damageScatter: Float = 0.15
     /// ダメージの数字が出たときに、小さい大きさから弾んで大きくなるのにかける時間（秒）
     static let damagePopDuration: TimeInterval = 0.15
-    /// 攻撃が当たったときに、受けた側が光っている時間（秒）と明るさ
+    /// 攻撃が当たったときに、受けた側を照らしている時間（秒）
     static let flashDuration: TimeInterval = 0.08
     static let finishingFlashDuration: TimeInterval = 0.25
-    static let flashIntensity: Float = 1.2
+    /// 攻撃が当たったときと、相手の必殺技の予告で、モンスターを照らす光の明るさ（ルーメン）と、光が届く距離（m）
+    /// 明るさが足りない・まぶしすぎるときは flashLightIntensity を変える
+    static let flashLightIntensity: Float = 150_000
+    static let flashLightRadius: Float = 0.9
+    /// 照らす光を置く場所。体の高さに掛ける割合と、相手の方へ出す距離（m）
+    static let flashLightHeightRatio: Float = 0.6
+    static let flashLightForwardOffset: Float = 0.3
     /// 火花の数。通常攻撃、フィーバー中の通常攻撃、必殺技、とどめ
     static let sparkCount = 40
     static let feverSparkCount = 90
@@ -117,9 +113,10 @@ final class BattleARSceneController {
     /// 立っている間にくり返すアニメーション。置く前に受け取った分は、置いたときに流す
     private var myIdle = MonsterAnimation.idle
     private var opponentIdle = MonsterAnimation.idle
-    /// 攻撃が当たったときに光らせる部品。モンスターを置いたときに作る
-    private var myFlashParts: [FlashPart] = []
-    private var opponentFlashParts: [FlashPart] = []
+    /// 攻撃が当たったときと、相手の必殺技の予告で、モンスターを照らす光。ふだんは明るさ 0 にしておき、モンスターを置いたときに作る
+    /// モンスターの材質を光る材質に入れ替えて戻す作りだと、捕獲画面から AR を引き継いだバトルで元に戻らず、白いままになったので、材質には触らない
+    private var myFlashLight: Entity?
+    private var opponentFlashLight: Entity?
     /// 攻撃が当たったときに火花を出すエンティティ。当たるたびに作ると重くなるので、置いたときに 1 つずつ作って使い回す
     private var mySparks: Entity?
     private var opponentSparks: Entity?
@@ -230,7 +227,7 @@ final class BattleARSceneController {
                 of: hitOnOpponent,
                 attacker: myEntity,
                 target: opponentEntity,
-                flashing: opponentFlashParts,
+                light: opponentFlashLight,
                 sparks: opponentSparks,
                 above: opponentHome,
                 height: opponentHeight,
@@ -244,7 +241,7 @@ final class BattleARSceneController {
                 of: hitOnMe,
                 attacker: opponentEntity,
                 target: myEntity,
-                flashing: myFlashParts,
+                light: myFlashLight,
                 sparks: mySparks,
                 above: myHome,
                 height: myHeight,
@@ -253,7 +250,7 @@ final class BattleARSceneController {
         }
         if let danger, danger.id != dangerID {
             dangerID = danger.id
-            blinkWarning(opponentFlashParts)
+            blinkWarning(opponentFlashLight)
         }
         if isFeverActive != self.isFeverActive {
             self.isFeverActive = isFeverActive
@@ -276,8 +273,8 @@ final class BattleARSceneController {
         floorAnchor = nil
         myEntity = nil
         opponentEntity = nil
-        myFlashParts = []
-        opponentFlashParts = []
+        myFlashLight = nil
+        opponentFlashLight = nil
         mySparks = nil
         opponentSparks = nil
         myAura = nil
@@ -302,8 +299,8 @@ final class BattleARSceneController {
         opponentEntity = opponent
         myHome = me.transform
         opponentHome = opponent.transform
-        myFlashParts = Self.flashParts(of: me)
-        opponentFlashParts = Self.flashParts(of: opponent)
+        myFlashLight = makeFlashLight(at: myHome, height: myHeight, facing: opponentHome)
+        opponentFlashLight = makeFlashLight(at: opponentHome, height: opponentHeight, facing: myHome)
         mySparks = makeSparks(at: myHome, height: myHeight, facing: opponentHome)
         opponentSparks = makeSparks(at: opponentHome, height: opponentHeight, facing: myHome)
         myAura = makeAura(at: myHome, height: myHeight)
@@ -396,7 +393,7 @@ final class BattleARSceneController {
         of hit: BattleViewModel.Hit,
         attacker: Entity?,
         target: Entity?,
-        flashing parts: [FlashPart],
+        light: Entity?,
         sparks: Entity?,
         above home: Transform,
         height: Float,
@@ -412,7 +409,7 @@ final class BattleARSceneController {
                 attacker?.monsterAnimator?.freeze(for: BattleViewModel.Hit.hitStopDuration)
                 target?.monsterAnimator?.freeze(for: BattleViewModel.Hit.hitStopDuration)
             }
-            flash(parts, duration: hit.isFinishing ? Self.finishingFlashDuration : Self.flashDuration)
+            flash(light, duration: hit.isFinishing ? Self.finishingFlashDuration : Self.flashDuration)
             let count = if hit.isFinishing {
                 Self.finishingSparkCount
             } else if hit.isSpecial {
@@ -427,59 +424,45 @@ final class BattleARSceneController {
         }
     }
 
-    /// モンスターを一瞬白く光らせてから、元の色に戻す
-    private func flash(_ parts: [FlashPart], duration: TimeInterval) {
-        for part in parts {
-            part.entity.components[ModelComponent.self]?.materials = part.lit
-        }
+    /// モンスターを一瞬白い光で照らしてから、光を消す
+    private func flash(_ light: Entity?, duration: TimeInterval) {
+        setLight(light, color: .white, intensity: Self.flashLightIntensity)
         Task {
             try? await Task.sleep(for: .seconds(duration))
-            for part in parts {
-                part.entity.components[ModelComponent.self]?.materials = part.original
-            }
+            setLight(light, color: .white, intensity: 0)
         }
     }
 
-    /// 相手の必殺技の予告の間、相手を赤く点滅させる
-    private func blinkWarning(_ parts: [FlashPart]) {
+    /// 相手の必殺技の予告の間、相手を赤い光で点滅させる
+    private func blinkWarning(_ light: Entity?) {
         let interval = BattleViewModel.dangerDuration / Double(Self.warningBlinkCount * 2)
         Task {
             for _ in 0..<Self.warningBlinkCount {
-                for part in parts {
-                    part.entity.components[ModelComponent.self]?.materials = part.warning
-                }
+                setLight(light, color: .systemRed, intensity: Self.flashLightIntensity)
                 try? await Task.sleep(for: .seconds(interval))
-                for part in parts {
-                    part.entity.components[ModelComponent.self]?.materials = part.original
-                }
+                setLight(light, color: .systemRed, intensity: 0)
                 try? await Task.sleep(for: .seconds(interval))
             }
         }
     }
 
-    /// 光らせる部品を集める。モデルは形を持つエンティティ（ModelComponent があるもの）が子に分かれているので、たどって全部集める
-    private static func flashParts(of entity: Entity) -> [FlashPart] {
-        var parts: [FlashPart] = []
-        if let model = entity.components[ModelComponent.self] {
-            parts.append(FlashPart(
-                entity: entity,
-                original: model.materials,
-                lit: model.materials.map { litMaterial(from: $0, color: .white) },
-                warning: model.materials.map { litMaterial(from: $0, color: .systemRed) }
-            ))
-        }
-        return parts + entity.children.flatMap(flashParts)
+    private func setLight(_ light: Entity?, color: UIColor, intensity: Float) {
+        guard let light, var component = light.components[PointLightComponent.self] else { return }
+        component.color = color
+        component.intensity = intensity
+        light.components.set(component)
     }
 
-    /// 元の色を残したまま、color の色で自分で光っているように明るくしたマテリアル
-    private static func litMaterial(from material: any Material, color: UIColor) -> any Material {
-        guard var lit = material as? PhysicallyBasedMaterial else {
-            // ほかの種類のマテリアルは明るさだけを変えられないので、その色で塗りつぶす
-            return UnlitMaterial(color: color)
-        }
-        lit.emissiveColor = .init(color: color)
-        lit.emissiveIntensity = flashIntensity
-        return lit
+    /// モンスターを照らす光を、体の前（相手の方）に置く。明るさ 0 で作るので、flash などで明るくするまでは何も照らさない
+    /// 光が届く距離を短くして、相手のモンスターまでは照らさないようにする
+    private func makeFlashLight(at home: Transform, height: Float, facing attacker: Transform) -> Entity {
+        let light = Entity()
+        light.components.set(PointLightComponent(color: .white, intensity: 0, attenuationRadius: Self.flashLightRadius))
+        var forward = attacker.translation - home.translation
+        forward.y = 0
+        light.position = home.translation + [0, height * Self.flashLightHeightRatio, 0] + simd_normalize(forward) * Self.flashLightForwardOffset
+        floorAnchor?.addChild(light)
+        return light
     }
 
     /// 攻撃が当たったときに火花を出すエンティティを、受ける側の胸のあたりに置く。当たるまでは何も出さない
