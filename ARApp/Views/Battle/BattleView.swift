@@ -9,19 +9,39 @@ import SwiftUI
 /// 画面の空いている所をタップして攻撃し、左右にスワイプしてよける（必殺技とフィーバーは自動）
 /// 対戦中は、カメラに映る床の上でモンスター同士が戦う（AR）
 /// 対戦前は BattleLobbyComponent、対戦中は BattleFightComponent を出す（どちらも同じフォルダにある）
+/// バトルタブではほかのプレイヤーと、捕獲画面では野生のモンスター（CPU）と戦う
 struct BattleView: View {
+    /// 野生のモンスターとのバトル（捕獲画面から開いたとき）の相手と、終わったときに呼ぶ処理
+    struct WildBattle {
+        /// 相手の野生のモンスター。対戦前の画面に、自分のモンスターと並べて出す
+        let monster: Monster
+        /// 決着して、勝ち負けの演出を見せ終わったときに呼ぶ。勝敗の結果の画面は出さない（捕獲画面が捕獲の結果を出す）
+        let onFinish: (BattleViewModel.Outcome) -> Void
+        /// 対戦前に「にげる」が押されたときに呼ぶ
+        let onFlee: () -> Void
+    }
+
     @State private var viewModel: BattleViewModel
+    /// 野生のモンスターとのバトルなら、その相手と終わったときに呼ぶ処理。ほかのプレイヤーとの対戦なら nil
+    private let wildBattle: WildBattle?
     @Environment(\.scenePhase) private var scenePhase
     /// この画面が表示されているか
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
 
-    init(service: any BattleService) {
+    /// - Parameters:
+    ///   - service: 対戦相手とのやり取り。野生のモンスターと戦うときは、そのモンスターを渡した CPUBattleService
+    ///   - wildBattle: 野生のモンスターとのバトルなら、その相手と終わったときに呼ぶ処理
+    init(service: any BattleService, wildBattle: WildBattle? = nil) {
         _viewModel = State(initialValue: BattleViewModel(service: service))
+        self.wildBattle = wildBattle
     }
 
     var body: some View {
         content
+            // 対戦中はタブバーを隠し、全画面で戦う（途中で別のタブに移れないようにもなる）
+            // 野生のモンスターとのバトルは捕獲画面が隠しているので、ここでも隠したままにする（出すと食い違う）
+            .toolbarVisibility(wildBattle == nil && viewModel.me == nil ? .automatic : .hidden, for: .tabBar)
             .onAppear { isVisible = true }
             .onDisappear {
                 isVisible = false
@@ -46,7 +66,8 @@ struct BattleView: View {
                 opponent: opponent,
                 myMonster: viewModel.myMonster,
                 opponentMonster: opponentMonster,
-                isVisible: isVisible
+                isVisible: isVisible,
+                onFinish: wildBattle?.onFinish
             )
         } else {
             BattleLobbyComponent(
@@ -55,7 +76,9 @@ struct BattleView: View {
                 isCancelling: viewModel.phase == .cancellingSearch,
                 errorMessage: viewModel.errorMessage,
                 onFind: { viewModel.findOpponent() },
-                onCancel: { viewModel.cancelSearch() }
+                onCancel: { viewModel.cancelSearch() },
+                wildMonster: wildBattle?.monster,
+                onFlee: wildBattle?.onFlee
             )
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -68,5 +91,5 @@ struct BattleView: View {
 
 #Preview {
     // ダミーの相手。「バトルする」を押すと、少し待ってから CPU との対戦が始まる
-    BattleView(service: DummyBattleService())
+    BattleView(service: CPUBattleService())
 }

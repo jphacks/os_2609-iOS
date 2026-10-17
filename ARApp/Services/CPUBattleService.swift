@@ -1,19 +1,16 @@
 //
-//  DummyBattleService.swift
+//  CPUBattleService.swift
 //  ARApp
-//
-//  ⚠️⚠️⚠️ 開発用のコード ⚠️⚠️⚠️
-//  Supabase がないとき（接続先の plist がない・プレビュー）に、本物の対戦相手の代わりに使う。
-//  本番では使わないが、プレビューと鍵を持っていないメンバーの環境で対戦画面が動かなくなるので削除しない。
-//  使っている場所：ContentView の makeBattleService()（plist がないとき）と、BattleView の #Preview
 //
 
 import Foundation
 
-/// 【開発用】Supabase がなくても対戦を試せるダミー実装
-/// すぐに相手が見つかり、相手（CPU）は一定の間隔で通常攻撃してくる。必殺技ゲージが溜まったら必殺技を撃つ
+/// CPU が相手になる対戦
+/// 捕獲画面で野生のモンスターと戦うときに使う（相手は opponent に渡したモンスター）
+/// Supabase がないとき（接続先の plist がない・プレビュー）も、本物の対戦相手の代わりに使う
+/// 相手（CPU）は一定の間隔で通常攻撃してくる。必殺技ゲージが溜まったら必殺技を撃つ
 /// こちらの必殺技は、ときどきよける
-final class DummyBattleService: BattleService {
+final class CPUBattleService: BattleService {
     /// CPU が攻撃する間隔（秒）
     private static let attackInterval: Double = 1
     /// CPU がこちらの必殺技をよける確率
@@ -21,10 +18,19 @@ final class DummyBattleService: BattleService {
     /// 必殺技ゲージが満タンになるまでの通常攻撃の回数
     private static let attacksBeforeSpecial = Fighter.specialGaugeMax / BattleEngine.specialGaugeGain
 
+    /// 相手のモンスター。nil なら、相手を探すふりをしてからランダムに選ぶ
+    private let opponent: Monster?
     /// CPU の行動を流す先。こちらの必殺技に、受けたかよけたかを返すのに使う
     private var continuation: AsyncThrowingStream<BattleAction, Error>.Continuation?
 
+    init(opponent: Monster? = nil) {
+        self.opponent = opponent
+    }
+
     func findOpponent(monster: Monster) async throws -> Monster {
+        if let opponent {
+            return opponent
+        }
         try await Task.sleep(for: .seconds(1.5))
         return Monster.all.randomElement()!
     }

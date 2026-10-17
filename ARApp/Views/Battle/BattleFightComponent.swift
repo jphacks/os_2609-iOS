@@ -18,6 +18,9 @@ struct BattleFightComponent: View {
     let opponentMonster: Monster
     /// バトルの画面が表示されているか。表示されている間だけ AR を動かす
     let isVisible: Bool
+    /// 野生のモンスターとのバトルで、勝ち負けの演出を見せ終わったときに呼ぶ
+    /// 渡したときは勝敗の結果（BattleResultComponent）を出さない。nil なら結果を出し、ロビーに戻るボタンを置く
+    let onFinish: ((BattleViewModel.Outcome) -> Void)?
 
     /// タップした位置の波紋。クールダウン中でも出るので、タップが届いているかがわかる
     @State private var tapRipple: TapRipple?
@@ -71,7 +74,12 @@ struct BattleFightComponent: View {
             .task(id: viewModel.outcome) {
                 guard let outcome = viewModel.outcome else { return }
                 try? await Task.sleep(for: .seconds(outcome == .won ? Self.victoryDuration : Self.defeatDuration))
-                isResultShown = true
+                guard !Task.isCancelled else { return }
+                if let onFinish {
+                    onFinish(outcome)
+                } else {
+                    isResultShown = true
+                }
             }
             .onChange(of: viewModel.outcome) { onOutcome() }
     }

@@ -8,6 +8,7 @@ import Observation
 
 /// AR 捕獲画面の状態。ARView には触らず、状態だけを持つ
 /// 歩いた距離に応じてモンスターを出し、3D での配置や動きは ARSceneController が担当する
+/// モンスターをタップするとバトル（相手は CPU）になり、勝てば捕獲成功として保存する
 /// モンスターはこの端末の中だけに出る（ほかのプレイヤーとは共有しない）
 @Observable
 final class ARCaptureViewModel {
@@ -38,6 +39,8 @@ final class ARCaptureViewModel {
     private(set) var detailMonster: Monster?
     /// 出現しているモンスター。一度に出るのは 1 体まで
     private(set) var wildMonster: WildMonster?
+    /// バトルしている野生のモンスター。バトル中でなければ nil
+    private(set) var battleMonster: WildMonster?
     /// 次のモンスターが出るまでに、あと何 m 歩くか
     /// 歩くたびに変わるが、画面には出さないので View の更新のきっかけにしない
     @ObservationIgnored private var remainingWalkDistance = Float.random(in: spawnWalkDistanceRange)
@@ -89,9 +92,9 @@ final class ARCaptureViewModel {
     }
 
     /// 自分が床の上を歩いたときに ARSceneController から呼ばれる。distance は歩いた距離（m）
-    /// 決まった距離を歩くと、モンスターが出る。出ている間と、捕獲の結果や詳細画面を出している間は数えない
+    /// 決まった距離を歩くと、モンスターが出る。出ている間と、バトル・捕獲の結果・詳細画面を出している間は数えない
     func walked(distance: Float) {
-        guard isFloorFound, wildMonster == nil, captureOutcome == nil, detailMonster == nil else { return }
+        guard isFloorFound, wildMonster == nil, battleMonster == nil, captureOutcome == nil, detailMonster == nil else { return }
         remainingWalkDistance -= distance
         guard remainingWalkDistance <= 0 else { return }
 
@@ -103,7 +106,7 @@ final class ARCaptureViewModel {
         startEscapeTimer()
     }
 
-    /// モンスターがタップされたときに ARSceneController から呼ばれる
+    /// モンスターがタップされたときに ARSceneController から呼ばれる。近ければバトルを始める
     /// distance は床の上での、自分とモンスターの距離（m）
     func monsterTapped(id: WildMonster.ID, distance: Float) {
         guard let target = wildMonster, target.id == id else { return }
@@ -114,19 +117,15 @@ final class ARCaptureViewModel {
         escapeTask?.cancel()
         escapeTask = nil
         wildMonster = nil
-        // 【仮】バトル画面ができるまでは、タップしたら勝ったことにする
-        // バトル画面ができたら、ここでバトルを始め、終わったときにバトル側から finishBattle を呼んでもらう
-        finishBattle(won: true, opponentModelName: target.monster.modelName)
+        battleMonster = target
     }
 
     /// バトルが終わったときに呼ぶ。勝ったら捕獲成功、負けたら捕獲失敗を出す
     /// 勝ったときは、結果を少し出してから詳細画面を開く
-    /// - Parameters:
-    ///   - won: 自分が勝ったか
-    ///   - opponentModelName: 戦った相手のモンスターの `modelName`
-    func finishBattle(won: Bool, opponentModelName: String) {
-        // 一覧にないモンスターは結果を出せない
-        guard let opponent = Monster.named(opponentModelName) else { return }
+    /// - Parameter won: 自分が勝ったか
+    func finishBattle(won: Bool) {
+        guard let opponent = battleMonster?.monster else { return }
+        battleMonster = nil
         captureOutcome = won ? .success(opponent) : .failure(opponent)
         if won {
             collection.add(opponent)
@@ -141,6 +140,13 @@ final class ARCaptureViewModel {
                 detailMonster = opponent
             }
         }
+    }
+
+    /// バトルの前に「にげる」が押されたときに呼ぶ。モンスターは逃げたことにして、AR に戻る
+    func fleeBattle() {
+        guard let wild = battleMonster else { return }
+        battleMonster = nil
+        showNotice("\(wild.monster.name)は逃げてしまった…")
     }
 
     /// 詳細画面を閉じて AR に戻る。また歩くと次のモンスターが出る

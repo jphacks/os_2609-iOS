@@ -96,6 +96,7 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
   - `ARViewContainer` は `UIViewRepresentable` の橋渡し役なので例外。
 - AR セッションのライフサイクル（`run` / `pause`）は `ARViewContainer` で管理する（`makeUIView` で run、`dismantleUIView` で pause）。
   - **`TabView` の中で AR を使う画面は、表示中だけ `ARViewContainer` を置く**（`onAppear` / `onDisappear` で表示中かを持つ。例：`ARCaptureView`）。`TabView` は別のタブに切り替えても画面を残すので、そのままでは `dismantleUIView` が呼ばれず、カメラが動き続ける。
+  - 捕獲画面でモンスターをタップすると、`ARCaptureView` の上に `BattleView`（相手は `CPUBattleService` の CPU）を重ねる。捕獲の ARView とバトルの ARView が同時にならないよう、`ARCaptureView` の `arScreen` だけで切り替え、前の画面を外してから少し待って次を置く。
 
 ## プロジェクト設定
 
@@ -108,7 +109,7 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
   - バトル画面は、AR を使えなくても対戦（HP やタップ）だけは動くので、`BattleView` の #Preview やシミュレータで確かめられる。モンスターは表示されない。
 - 対戦は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義は `supabase/schema.sql`。
   - 接続先（URL と anon key）は `Resources/SupabaseSecrets.plist` に書く。公開リポジトリなので `.gitignore` 済みで、コミットしない。ひな形は `supabase/SupabaseSecrets.example.plist`。
-  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` を使う。
+  - plist がない・値が空なら、CPU が相手になる `CPUBattleService` を使う。捕獲画面の野生のモンスターとのバトルも `CPUBattleService` を使う。
   - `service_role`（secret）の鍵はアプリにもリポジトリにも入れない。
 - 捕獲画面のモンスターは、AR の中で歩いた距離に応じて端末の中だけに出る（ほかのプレイヤーとは共有しない。現在地やマップにも依存しない）。
 

@@ -6,7 +6,7 @@
 import Foundation
 
 /// 対戦相手とのやり取り
-/// 本番は SupabaseBattleService、Supabase がないときは DummyBattleService（CPU が相手）を使う
+/// 本番は SupabaseBattleService、Supabase がないときと野生のモンスターとのバトルでは CPUBattleService（CPU が相手）を使う
 protocol BattleService: AnyObject {
     /// 対戦相手を探す。場所は問わず、対戦相手を待っている人がいれば、その人と対戦する
     /// 誰も待っていなければ、自分が待つ側になって相手が来るまで待ち続ける
