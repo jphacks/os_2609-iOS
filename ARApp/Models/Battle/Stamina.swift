@@ -28,6 +28,12 @@ struct Stamina {
         restEndsAt.map { date < $0 } ?? false
     }
 
+    /// 休憩が終わったことを記録する。休憩が終わる時刻（restEndsAt）に呼ぶ
+    /// 時刻を過ぎれば isResting(at:) は false になるが、値が変わらないと画面が描き直されないので、ここで変える
+    mutating func finishRest() {
+        restEndsAt = nil
+    }
+
     /// date の時点の値。休憩中は、0 から満タンまで、休憩が終わるのに合わせて増えていく
     func value(at date: Date) -> Double {
         if let restEndsAt, date < restEndsAt {

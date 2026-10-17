@@ -99,8 +99,7 @@ final class BattleViewModel {
     private var dodgedDangerID: UUID?
     /// 自分のスタミナ。値は時間とともに変わるので、表示するときは value(at:) で求める
     private(set) var stamina = Stamina()
-    /// へとへとで休憩中か。休憩が終わったら、休憩を終わらせるタスクが false にする
-    private(set) var isResting = false
+    /// 休憩が終わる時刻に、終わったことを stamina に記録するタスク
     private var restTask: Task<Void, Never>?
     /// 回しているリーチ。リーチでなければ nil
     private(set) var reach: FeverLottery.Reach?
@@ -128,6 +127,8 @@ final class BattleViewModel {
     var opponent: Fighter? { state?.fighters[Self.opponentID] }
     /// フィーバー中か。終わる時刻を過ぎていたら、終わらせるタスクがまだ動いていなくてもフィーバーではない
     var isFeverActive: Bool { feverEndsAt.map { Date.now < $0 } ?? false }
+    /// へとへとで休憩中か。休憩しているかは stamina だけが持つ（攻撃できるかの判断と画面の表示で食い違わないように）
+    var isResting: Bool { stamina.isResting(at: .now) }
 
     /// 「バトルする」が押されたときに呼ぶ。対戦相手を探し、誰も待っていなければ相手が来るまで待つ
     func findOpponent() {
@@ -172,14 +173,12 @@ final class BattleViewModel {
     /// スタミナを使い切ったら、休憩を始める
     func attack() {
         let now = ContinuousClock.now
-        guard now >= nextNormalAttackAt, phase == .fighting, finishTask == nil,
-              !stamina.isResting(at: .now)
-        else { return }
+        guard now >= nextNormalAttackAt, phase == .fighting, finishTask == nil, !isResting else { return }
         let action: BattleAction = isFeverActive ? .feverAttack : .normalAttack
         guard perform(action) else { return }
         nextNormalAttackAt = now + .seconds(BattleEngine.normalAttackCooldown)
         stamina.spendForAttack(at: .now)
-        if stamina.isResting(at: .now) {
+        if isResting {
             startRest()
         }
         // ゲージが満タンになったら、自動で必殺技を撃つ
@@ -367,24 +366,25 @@ final class BattleViewModel {
         feverEndsAt = nil
     }
 
-    /// へとへとになったときに呼ぶ。休憩が終わったら isResting を false に戻す
+    /// へとへとになったときに呼ぶ。休憩が終わる時刻まで待って、終わったことを stamina に記録する
+    /// 待つ時間は stamina の休憩が終わる時刻から求める（別に数えると、少しずれて食い違う）
     private func startRest() {
-        isResting = true
+        guard let restEndsAt = stamina.restEndsAt else { return }
         restTask?.cancel()
         restTask = Task {
             do {
-                try await Task.sleep(for: .seconds(Stamina.restDuration))
+                try await Task.sleep(for: .seconds(restEndsAt.timeIntervalSinceNow))
             } catch {
                 return // 対戦が終わった
             }
-            isResting = false
+            stamina.finishRest()
         }
     }
 
     private func endRest() {
         restTask?.cancel()
         restTask = nil
-        isResting = false
+        stamina.finishRest()
     }
 
     /// 相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る
