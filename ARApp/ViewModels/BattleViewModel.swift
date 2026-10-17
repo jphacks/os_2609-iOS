@@ -42,9 +42,9 @@ final class BattleViewModel {
     }
 
     /// 攻撃を選んでからカーソルが動き出すまでの時間（秒）
-    static let leadTime: TimeInterval = 0.5
+    private static let leadTime: TimeInterval = 0.5
     /// ターンの結果を見せる時間（秒）
-    static let resultDisplayDuration: TimeInterval = 1.2
+    private static let resultDisplayDuration: TimeInterval = 1.2
 
     /// 次の対戦で使う自分のモンスター（今はランダム。あとで一覧から選べるようにする）
     private(set) var myMonster = Monster.all.randomElement()!
@@ -54,7 +54,7 @@ final class BattleViewModel {
     /// 通信に失敗したときに出すメッセージ
     private(set) var errorMessage: String?
 
-    private(set) var attackType = AttackType.normal
+    private var attackType = AttackType.normal
     /// 今のターンのゲージ。最初の攻撃までは判定エリアなし
     private(set) var gauge = TimingGauge(traverseDuration: 1, zones: [])
     /// 今のターンのエリアごとの判定。まだ当てていないエリアは nil
@@ -68,12 +68,12 @@ final class BattleViewModel {
     private(set) var lastEvent: Event?
 
     /// カーソルが左端を出発する時刻
-    private(set) var startedAt = Date.now
+    private var startedAt = Date.now
     /// ヒットストップが終わる時刻。それまでカーソルは止まって見える
-    private(set) var hitStopUntil = Date.distantPast
+    private var hitStopUntil = Date.distantPast
     /// カーソルを止めた時刻。動いている間は nil
     /// 最初は遠い過去にしておき、カーソルが左端に止まって見えるようにする
-    private(set) var stoppedAt: Date? = .distantPast
+    private var stoppedAt: Date? = .distantPast
 
     private let service: any BattleService
     private var searchTask: Task<Void, Never>?

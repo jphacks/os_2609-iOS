@@ -33,7 +33,7 @@ struct BattleFighter {
     }
 
     /// 連続 PERFECT によるダメージ倍率。2 回目から 0.25 ずつ上がり、最大 2 倍
-    static func comboMultiplier(_ combo: Int) -> Double {
+    private static func comboMultiplier(_ combo: Int) -> Double {
         min(1 + 0.25 * Double(max(combo - 1, 0)), 2)
     }
 
