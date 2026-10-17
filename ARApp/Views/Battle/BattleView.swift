@@ -65,7 +65,7 @@ struct BattleView: View {
         } else {
             BattleLobbyComponent(
                 myMonster: viewModel.myMonster,
-                isWaiting: viewModel.phase == .searching,
+                isWaiting: viewModel.wantsToWait,
                 errorMessage: viewModel.errorMessage,
                 onStart: Self.waitsAutomatically ? nil : { viewModel.startWaiting() }
             )

@@ -15,6 +15,7 @@ import SwiftUI
 /// 待つのは自動（BattleViewModel が、画面を開いている間ずっと待つ）なので、本番の端末ではボタンは出ない
 struct BattleLobbyComponent: View {
     let myMonster: Monster
+    /// 対戦相手を待っているか（失敗して待ち直すまでの間も含む）
     let isWaiting: Bool
     /// 対戦できなかったとき（通信の失敗、相手が抜けた）のメッセージ。少しすると自動で待ち直す
     let errorMessage: String?
@@ -67,7 +68,7 @@ struct BattleLobbyComponent: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-            } else if errorMessage == nil {
+            } else {
                 VStack(spacing: 12) {
                     ProgressView()
                     Text("対戦相手を待っています…")

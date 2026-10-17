@@ -60,7 +60,8 @@ final class BattleViewModel {
     /// この時刻になるまで次の通常攻撃はできない（クールダウン）
     private var nextNormalAttackAt = ContinuousClock.now
     /// バトルの画面が表示されていて、対戦相手を待ちたいか
-    private var wantsToWait = false
+    /// 通信に失敗して、待ち直すまで少し間を空けている間も true のまま
+    private(set) var wantsToWait = false
 
     /// 通信に失敗したとき、もう一度相手を待ち始めるまでの時間（秒）
     private static let retryDelay: Double = 3
