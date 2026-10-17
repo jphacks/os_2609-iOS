@@ -7,13 +7,12 @@ import Foundation
 import Observation
 
 /// 対戦画面の状態と、バトルの進行
-/// バトルの画面を開いている人どうしを自動でマッチングし、お互いにタップで攻撃し合う
-/// 画面を開いている間は、相手が見つかるまで自動で待ち続ける
+/// 「バトルする」を押した人どうしをマッチングし（場所は問わない）、お互いにタップで攻撃し合う
 /// 自分の行動はすぐに反映して相手に送り、相手の行動は届いた順に反映する（どちらも BattleEngine で計算する）
 @Observable
 final class BattleViewModel {
     enum Phase {
-        /// 対戦相手を待っていない（画面を開いていない、または通信に失敗してやり直すのを待っている）
+        /// 対戦相手を待っていない（「バトルする」を押す前）
         case lobby
         /// 対戦相手を待っている
         case searching
@@ -46,12 +45,12 @@ final class BattleViewModel {
     private(set) var myMonster = Monster.all.randomElement()!
     /// 対戦中の相手のモンスター。マッチングするまでは nil
     private(set) var opponentMonster: Monster?
-    private var phase = Phase.lobby
+    private(set) var phase = Phase.lobby
     /// 対戦中の状態。マッチングするまでは nil
     private(set) var state: BattleState?
     /// 確定した決着。決着がついていない、またはまだ確定していなければ nil
     private(set) var outcome: Outcome?
-    /// 通信に失敗したときに出すメッセージ
+    /// 対戦できなかったとき（通信の失敗、相手が抜けた）に出すメッセージ
     private(set) var errorMessage: String?
     /// 最後に相手へ当たった攻撃。View はこれが変わるたびに演出を流す
     private(set) var lastHitOnOpponent: Hit?
@@ -59,18 +58,11 @@ final class BattleViewModel {
     private(set) var lastHitOnMe: Hit?
     /// この時刻になるまで次の通常攻撃はできない（クールダウン）
     private var nextNormalAttackAt = ContinuousClock.now
-    /// バトルの画面が表示されていて、対戦相手を待ちたいか
-    /// 通信に失敗して、待ち直すまで少し間を空けている間も true のまま
-    private(set) var wantsToWait = false
-
-    /// 通信に失敗したとき、もう一度相手を待ち始めるまでの時間（秒）
-    private static let retryDelay: Double = 3
 
     private let service: any BattleService
     private var searchTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
     private var finishTask: Task<Void, Never>?
-    private var retryTask: Task<Void, Never>?
     /// 対戦をやめたときの片付け。次の相手探しは、これが終わってから始める
     private var leaveTask: Task<Void, Never>?
 
@@ -81,26 +73,11 @@ final class BattleViewModel {
     var me: Fighter? { state?.fighters[Self.myID] }
     var opponent: Fighter? { state?.fighters[Self.opponentID] }
 
-    /// バトルの画面が表示されたときに呼ぶ。対戦相手を待ち始める
-    func startWaiting() {
-        wantsToWait = true
-        findOpponentIfWanted()
-    }
-
-    /// バトルの画面が隠れたときに呼ぶ。対戦相手を待つのをやめる（対戦中ならそのまま続ける）
-    func stopWaiting() {
-        wantsToWait = false
-        retryTask?.cancel()
-        retryTask = nil
-        cancelSearch()
-    }
-
-    /// 画面が表示されていて、ロビーにいれば、対戦相手を待ち始める
-    private func findOpponentIfWanted() {
-        guard wantsToWait, phase == .lobby else { return }
+    /// 「バトルする」が押されたときに呼ぶ。対戦相手を探し、誰も待っていなければ相手が来るまで待つ
+    func findOpponent() {
+        guard phase == .lobby else { return }
         phase = .searching
-        // 失敗のメッセージは、ここでは消さずに対戦が始まったときに消す
-        // ここで消すと、失敗が続いている間（通信できないなど）、待ち直すたびにメッセージが消えたり出たりしてチカチカする
+        errorMessage = nil
         searchTask = Task { [leaveTask] in
             // 前の対戦の片付けが終わる前に始めると、片付けが新しい相手探しの状態まで消してしまう
             await leaveTask?.value
@@ -117,11 +94,11 @@ final class BattleViewModel {
         }
     }
 
-    /// 対戦相手を探すのをやめる
+    /// 「やめる」が押されたとき、またはバトルの画面が隠れたときに呼ぶ。対戦相手を探すのをやめる
     /// 片付けが終わってからロビーに戻る
     /// 終わる前に次の相手探しを始めると、前の片付けが新しい相手探しの状態まで消してしまうため
-    /// 片付けている間に画面がまた表示されていたら、片付け終わってから待ち直す
-    private func cancelSearch() {
+    /// 相手を探していなければ（対戦中など）何もしない
+    func cancelSearch() {
         guard phase == .searching, let searchTask else { return }
         phase = .cancellingSearch
         searchTask.cancel()
@@ -130,7 +107,6 @@ final class BattleViewModel {
             // キャンセルと同時にマッチングが終わっていた場合に備えて、対戦からも抜ける
             await service.leave()
             phase = .lobby
-            findOpponentIfWanted()
         }
     }
 
@@ -148,15 +124,14 @@ final class BattleViewModel {
         perform(.specialAttack)
     }
 
-    /// 結果を見終わったときに呼ぶ。ロビーに戻り、次の対戦相手を待ち始める。次の対戦では別のモンスターを使う
+    /// 結果を見終わったときに呼ぶ。ロビーに戻る。次の対戦では別のモンスターを使う
     func leaveBattle() {
         reset()
         myMonster = Monster.all.randomElement()!
-        findOpponentIfWanted()
     }
 
     /// 対戦や相手探しをやめて、ロビーの状態に戻す
-    /// 自分のモンスターはここでは選び直さない（失敗して待ち直すたびに、ロビーのモンスターが入れ替わってしまうため）
+    /// 自分のモンスターはここでは選び直さない（対戦できなかったときは、同じモンスターでやり直す）
     private func reset() {
         searchTask?.cancel()
         receiveTask?.cancel()
@@ -172,7 +147,6 @@ final class BattleViewModel {
     }
 
     private func startBattle(against opponentMonster: Monster) {
-        errorMessage = nil
         self.opponentMonster = opponentMonster
         state = BattleState(
             Fighter(id: Self.myID, name: myMonster.name, maxHP: BattleEngine.maxHP),
@@ -238,17 +212,11 @@ final class BattleViewModel {
         }
     }
 
-    /// 相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻り、少し待ってから相手を待ち直す
-    /// すぐに待ち直すと、通信できない間ずっと失敗をくり返してしまうため
+    /// 相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る
     private func fail(_ error: Error) {
         // 【開発用】原因を調べるためのログ。リリースするときに消してよい
         print("対戦の通信に失敗しました: \(error)")
         reset()
-        errorMessage = "対戦できませんでした。もう一度相手を探します"
-        retryTask = Task {
-            try? await Task.sleep(for: .seconds(Self.retryDelay))
-            guard !Task.isCancelled else { return }
-            findOpponentIfWanted()
-        }
+        errorMessage = "対戦できませんでした。もう一度お試しください"
     }
 }

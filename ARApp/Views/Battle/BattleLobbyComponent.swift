@@ -2,25 +2,20 @@
 //  BattleLobbyComponent.swift
 //  ARApp
 //
-//  ⚠️⚠️⚠️ 開発用のコードを含む ⚠️⚠️⚠️
-//  AR を使えない端末（シミュレータ）で対戦を確かめるための「バトルする」ボタン（onStart）がある。
-//  本番の端末は AR を使えるので、開いたら自動で待ち、ボタンは出ない。
-//  消すときは、このファイルの onStart とボタンに加えて、BattleView の waitsAutomatically と、
-//  それを使っている所（onAppear、BattleLobbyComponent に渡す onStart、結果の画面の onBack）も一緒に消す。
-//
 
 import SwiftUI
 
-/// 対戦相手を待っている間の画面。自分のモンスターを見せる
-/// 待つのは自動（BattleViewModel が、画面を開いている間ずっと待つ）なので、本番の端末ではボタンは出ない
+/// 対戦前の画面。自分のモンスターを見せ、「バトルする」で対戦相手を探す
 struct BattleLobbyComponent: View {
     let myMonster: Monster
-    /// 対戦相手を待っているか（失敗して待ち直すまでの間も含む）
-    let isWaiting: Bool
-    /// 対戦できなかったとき（通信の失敗、相手が抜けた）のメッセージ。少しすると自動で待ち直す
+    /// 対戦相手を探している
+    let isSearching: Bool
+    /// 相手探しをやめて、片付けが終わるのを待っている
+    let isCancelling: Bool
+    /// 対戦できなかったとき（通信の失敗、相手が抜けた）のメッセージ
     let errorMessage: String?
-    /// 【開発用】AR を使えない端末で、相手を待ち始めるボタンが押されたとき。nil ならボタンを出さない（自動で待つ）
-    let onStart: (() -> Void)?
+    let onFind: () -> Void
+    let onCancel: () -> Void
     /// ときどき手を振るアニメーション
     @State private var waveAnimation: MonsterAnimationRequest?
 
@@ -48,37 +43,50 @@ struct BattleLobbyComponent: View {
             Text(myMonster.name)
                 .font(.title3.bold())
 
-            Text("この画面を開いている人と対戦できます。画面をタップして攻撃しよう")
+            Text("「バトルする」を押した人どうしで対戦できます。画面をタップして攻撃しよう")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-
-            Spacer()
 
             if let errorMessage {
                 Text(errorMessage)
                     .font(.footnote)
                     .foregroundStyle(.red)
             }
-            if let onStart, !isWaiting {
-                Button(action: onStart) {
+
+            Spacer()
+
+            if isSearching {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    if isCancelling {
+                        Text("相手探しをやめています…")
+                    } else {
+                        Text("対戦相手を待っています…")
+                        Button("やめる", role: .cancel, action: onCancel)
+                    }
+                }
+            } else {
+                Button(action: onFind) {
                     Text("バトルする")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-            } else {
-                VStack(spacing: 12) {
-                    ProgressView()
-                    Text("対戦相手を待っています…")
-                }
             }
         }
     }
 }
 
 #Preview {
-    BattleLobbyComponent(myMonster: Monster.all[0], isWaiting: true, errorMessage: nil, onStart: nil)
-        .padding()
+    BattleLobbyComponent(
+        myMonster: Monster.all[0],
+        isSearching: false,
+        isCancelling: false,
+        errorMessage: nil,
+        onFind: {},
+        onCancel: {}
+    )
+    .padding()
 }

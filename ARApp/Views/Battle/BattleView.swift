@@ -4,9 +4,8 @@
 //
 
 import SwiftUI
-import ARKit
 
-/// 対戦画面。開いている間は自動で対戦相手を待ち、見つかったら対戦が始まる
+/// 対戦画面。「バトルする」で対戦相手を探し、見つかったら対戦が始まる
 /// 画面の空いている所をタップして攻撃し、溜まったら必殺技を撃つ
 /// 対戦中は、カメラに映る床の上でモンスター同士が戦う（AR）
 /// 部品は同じフォルダの別ファイルにある（StatBarComponent、BattleEffects など）
@@ -30,9 +29,6 @@ struct BattleView: View {
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
 
-    /// AR を使える端末では、画面を開いたら自動で対戦相手を待つ
-    /// 【開発用】AR を使えない端末（シミュレータ）では、ロビーの「バトルする」ボタンを押したときだけ待つ
-    private static let waitsAutomatically = ARWorldTrackingConfiguration.isSupported
     /// 決着してから、勝った側が喜び始めるまでの時間（秒）。最後の攻撃の動きを見せてから喜ぶ
     private static let celebrationDelay = 1.0
     /// この時間（秒）次の攻撃を当てなかったら、続けて当てた回数を 0 に戻す
@@ -46,15 +42,11 @@ struct BattleView: View {
 
     var body: some View {
         content
-            .onAppear {
-                isVisible = true
-                if Self.waitsAutomatically {
-                    viewModel.startWaiting()
-                }
-            }
+            .onAppear { isVisible = true }
             .onDisappear {
                 isVisible = false
-                viewModel.stopWaiting()
+                // 別のタブに移ったら、相手を待つのをやめる（対戦中ならそのまま続ける）
+                viewModel.cancelSearch()
             }
     }
 
@@ -65,9 +57,11 @@ struct BattleView: View {
         } else {
             BattleLobbyComponent(
                 myMonster: viewModel.myMonster,
-                isWaiting: viewModel.wantsToWait,
+                isSearching: viewModel.phase == .searching || viewModel.phase == .cancellingSearch,
+                isCancelling: viewModel.phase == .cancellingSearch,
                 errorMessage: viewModel.errorMessage,
-                onStart: Self.waitsAutomatically ? nil : { viewModel.startWaiting() }
+                onFind: { viewModel.findOpponent() },
+                onCancel: { viewModel.cancelSearch() }
             )
             .padding()
         }
@@ -154,10 +148,6 @@ struct BattleView: View {
             // 決着が確定したら結果を全面に出す
             if let outcome = viewModel.outcome {
                 BattleResultComponent(outcome: outcome, opponentName: opponent.name) {
-                    // 【開発用】ボタンで待ち始める端末では、次もボタンを押すまで待たない
-                    if !Self.waitsAutomatically {
-                        viewModel.stopWaiting()
-                    }
                     viewModel.leaveBattle()
                 }
                 .transition(.opacity)
