@@ -81,6 +81,8 @@ final class BattleViewModel {
         searchTask = Task { [leaveTask] in
             // 前の対戦の片付けが終わる前に始めると、片付けが新しい相手探しの状態まで消してしまう
             await leaveTask?.value
+            // 片付けを待っている間に「やめる」が押されていたら、相手を探さない
+            guard !Task.isCancelled else { return }
             do {
                 let opponentMonster = try await service.findOpponent(monster: myMonster)
                 guard !Task.isCancelled else { return }
