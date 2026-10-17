@@ -22,6 +22,6 @@ enum SupabaseConfig {
     static let url = values["URL"] ?? ""
     static let anonKey = values["AnonKey"] ?? ""
 
-    /// plist がない・値が空なら、ContentView は DummyBattleService と DummyWildMonsterService を使う
+    /// plist がない・値が空なら、ContentView は DummyBattleService を使う
     static var isConfigured: Bool { !url.isEmpty && !anonKey.isEmpty }
 }
