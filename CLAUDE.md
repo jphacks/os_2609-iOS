@@ -25,8 +25,9 @@ ARApp/
 ├── Views/        SwiftUI の View。ContentView 以外は機能ごとのフォルダに置く
 │   ├── Map/      マップ画面（屋内マップ、現在地）
 │   ├── Capture/  AR 捕獲画面
-│   │   └── AR/   ARView まわり（RealityKit / ARKit を扱うのはここだけ）
-│   └── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル）
+│   │   └── AR/   ARView まわり（ARKit を扱うのはここだけ）
+│   ├── Battle/   バトル画面（タップで攻撃し合うリアルタイムバトル）
+│   └── Monster/  3D モンスターの見た目とアニメーション（捕獲画面とバトル画面で共通）
 ├── Services/     外部とのやり取り（BLE / RSSI、Supabase での対戦とモンスターの共有）
 └── Resources/    アプリに同梱するファイル
     └── Models/   モンスターの 3D モデル（USDZ）。Quaternius「Ultimate Monsters」（CC0）を glTF から変換したもの
@@ -40,10 +41,20 @@ ARApp/
 |---|---|
 | `ARViewContainer` | SwiftUI と ARView の橋渡し（`UIViewRepresentable`）、AR セッションの run / pause |
 | `ARSceneController` | アンカーやエンティティの配置、タップなどシーンのイベントを ViewModel に伝える |
-| `MonsterEntity` など | 3D の見た目を作るだけ。配置する場所やタイミングは決めない |
 
 `ARSceneController` は `UIViewRepresentable` の Coordinator として使う（`makeCoordinator()` の戻り値）。
 SwiftUI の決まりとしての名前ではなく、役割がわかる名前を付けている。
+
+### Views/Monster（3D モンスター）
+
+RealityKit を扱うのは `Views/Capture/AR` と `Views/Monster`、それに 3D のモンスターを表示する画面の部品だけにする。
+
+| ファイル | 担当 |
+|---|---|
+| `MonsterEntity` | モデルを読み込んで高さを合わせ、`MonsterAnimator` を付けて立っているアニメーションを流す。配置する場所やタイミングは決めない |
+| `MonsterAnimator` | アニメーションを切り替える。`model.monsterAnimator?.loop(.walk)` でくり返し、`playOnce(.punch)` で 1 回流して元に戻る |
+
+アニメーションの種類と区間は `Models/MonsterAnimation`（14 種類、全モンスター共通）。USDZ に 1 本につないで入っているものを切り出して流すので、別のアニメーションを使うときも USDZ の追加は要らない。
 
 空のフォルダは作らない。最初のファイルが必要になった時点でフォルダを作る。
 
