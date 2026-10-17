@@ -56,7 +56,7 @@ RealityKit を扱うのは `Views/Capture/AR`、`Views/Battle/AR`、`Views/Monst
 | ファイル | 担当 |
 |---|---|
 | `MonsterEntity` | モデルを読み込んで高さを合わせ、`MonsterAnimator` を付けて立っているアニメーションを流す。配置する場所やタイミングは決めない |
-| `MonsterAnimator` | アニメーションを切り替える。`model.monsterAnimator?.loop(.walk)` でくり返し、`playOnce(.punch)` で 1 回流して元に戻る。`play(request)` で `MonsterAnimationRequest`（待ってから流す、続けて流すなど）のとおりに流す |
+| `MonsterAnimator` | アニメーションを切り替える。`model.monsterAnimator?.loop(.walk)` でくり返し、`playOnce(.punch)` で 1 回流して元に戻る。`play(request)` で `MonsterAnimationRequest`（待ってから流す、続けて流すなど）のとおりに流す。`changeLoop(to: .duck)` でくり返すアニメーションを変える（1 回流している途中なら、終わってから） |
 
 アニメーションの種類と区間は `Models/MonsterAnimation`（14 種類、全モンスター共通）。USDZ に 1 本につないで入っているものを切り出して流すので、別のアニメーションを使うときも USDZ の追加は要らない。
 
