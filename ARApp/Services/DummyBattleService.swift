@@ -18,7 +18,7 @@ final class DummyBattleService: BattleService {
     /// 必殺技ゲージが満タンになるまでの通常攻撃の回数
     private static let attacksBeforeSpecial = Fighter.specialGaugeMax / BattleEngine.specialGaugeGain
 
-    func findOpponent(monster: Monster) async throws -> Monster {
+    func findOpponent(monster: Monster, pairingToken: UUID?) async throws -> Monster {
         try await Task.sleep(for: .seconds(1.5))
         return Monster.all.randomElement()!
     }

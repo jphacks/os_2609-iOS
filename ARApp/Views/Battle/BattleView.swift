@@ -10,15 +10,11 @@ import SwiftUI
 /// 対戦中は、カメラに映る床の上でモンスター同士が戦う（AR）
 /// 対戦前は BattleLobbyComponent、対戦中は BattleFightComponent を出す（どちらも同じフォルダにある）
 struct BattleView: View {
-    @State private var viewModel: BattleViewModel
+    let viewModel: BattleViewModel
     @Environment(\.scenePhase) private var scenePhase
     /// この画面が表示されているか
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
-
-    init(service: any BattleService) {
-        _viewModel = State(initialValue: BattleViewModel(service: service))
-    }
 
     var body: some View {
         content
@@ -54,7 +50,7 @@ struct BattleView: View {
                 isSearching: viewModel.phase == .searching || viewModel.phase == .cancellingSearch,
                 isCancelling: viewModel.phase == .cancellingSearch,
                 errorMessage: viewModel.errorMessage,
-                onFind: { viewModel.findOpponent() },
+                onFind: nil,
                 onCancel: { viewModel.cancelSearch() }
             )
             .padding()
@@ -64,5 +60,5 @@ struct BattleView: View {
 
 #Preview {
     // ダミーの相手。「バトルする」を押すと、少し待ってから CPU との対戦が始まる
-    BattleView(service: DummyBattleService())
+    BattleView(viewModel: BattleViewModel(service: DummyBattleService()))
 }

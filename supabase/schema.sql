@@ -17,6 +17,8 @@ create table battles (
   player1_id uuid not null,
   -- モンスターのモデル名（Monster.modelName。例：'monster-bunny'）
   player1_monster text not null,
+  -- BLE で相互認識した 2 台だけが共有する、一回限りの対戦トークン
+  pairing_token uuid not null,
   player2_id uuid,
   player2_monster text,
   -- 勝った人のプレイヤー ID。決着がつく前や、途中でやめた対戦は null
@@ -100,13 +102,13 @@ revoke update on battles from anon, authenticated;
 create policy "誰でも行動を読める" on battle_actions for select using (true);
 create policy "誰でも行動を送れる" on battle_actions for insert with check (true);
 
--- 待っている相手を探して入る（場所は問わない）。誰もいなければ自分が部屋を作って待つ
+-- BLE で相互認識した、同じ pairing_token の相手だけを探して入る。誰もいなければ自分が部屋を作って待つ
 -- 2 人が同時に呼んでも、ロックで 1 人ずつ順番に処理する
 -- （順番にしないと、待っている部屋がないときに 2 人とも部屋を作り、別々の部屋で待ち続けてしまう）
 -- ロックはトランザクションが終わると外れるので、後の人には先の人が作った部屋が見える
 -- 10 秒以上「まだ待っている」と伝えてこない部屋は、待っていた人がもういない（アプリが落ちたなど）とみなして使わない
 -- 長くすると、待っていた人がいなくなった部屋に入って、動かない相手と対戦してしまう
-create or replace function join_battle(p_player_id uuid, p_monster text)
+create or replace function join_battle(p_player_id uuid, p_monster text, p_pairing_token uuid)
 returns battles
 language plpgsql
 security definer
@@ -123,6 +125,7 @@ begin
     select id from battles
     where status = 'waiting'
       and player1_id <> p_player_id
+      and pairing_token = p_pairing_token
       and last_seen_at > now() - interval '10 seconds'
     order by created_at
     limit 1
@@ -134,14 +137,14 @@ begin
     return joined;
   end if;
 
-  insert into battles (player1_id, player1_monster)
-  values (p_player_id, p_monster)
+  insert into battles (player1_id, player1_monster, pairing_token)
+  values (p_player_id, p_monster, p_pairing_token)
   returning * into joined;
   return joined;
 end;
 $$;
 
-grant execute on function join_battle to anon;
+grant execute on function join_battle(uuid, text, uuid) to anon;
 
 -- 部屋を作って待っている人が、まだ待っていることを伝える（アプリが 3 秒ごとに呼ぶ）
 create or replace function keep_waiting(p_battle_id uuid)

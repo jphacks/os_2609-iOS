@@ -10,20 +10,29 @@ import SwiftUI
 struct ContentView: View {
     /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
     @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
-    @State private var battleService = Self.makeBattleService()
+    @State private var battleViewModel = BattleViewModel(service: Self.makeBattleService())
+    @State private var nearbyBattleDiscovery = NearbyBattleDiscovery()
+    @State private var selectedTab = "map"
     /// 捕まえたモンスターの保存先。図鑑や編成でも同じものを使うので、アプリ全体で 1 つだけ作る
     @State private var monsterCollection = SwiftDataMonsterCollection()
 
     var body: some View {
-        TabView {
-            Tab("マップ", systemImage: "map.fill") {
-                MapView(locationViewModel: locationViewModel)
+        TabView(selection: $selectedTab) {
+            Tab("マップ", systemImage: "map.fill", value: "map") {
+                MapView(
+                    locationViewModel: locationViewModel,
+                    nearbyBattleDiscovery: nearbyBattleDiscovery,
+                    onStartBattle: { pairingToken in
+                        battleViewModel.findOpponent(pairingToken: pairingToken)
+                        selectedTab = "battle"
+                    }
+                )
             }
-            Tab("捕獲", systemImage: "camera.viewfinder") {
+            Tab("捕獲", systemImage: "camera.viewfinder", value: "capture") {
                 ARCaptureView(locationViewModel: locationViewModel, collection: monsterCollection)
             }
-            Tab("バトル", systemImage: "bolt.fill") {
-                BattleView(service: battleService)
+            Tab("バトル", systemImage: "bolt.fill", value: "battle") {
+                BattleView(viewModel: battleViewModel)
             }
         }
         .onAppear {

@@ -103,8 +103,8 @@ final class BattleViewModel {
     /// フィーバー中か。終わる時刻を過ぎていたら、終わらせるタスクがまだ動いていなくてもフィーバーではない
     var isFeverActive: Bool { feverEndsAt.map { Date.now < $0 } ?? false }
 
-    /// 「バトルする」が押されたときに呼ぶ。対戦相手を探し、誰も待っていなければ相手が来るまで待つ
-    func findOpponent() {
+    /// BLE で相互認識した相手を、同じトークンで Supabase 上の対戦に入れる
+    func findOpponent(pairingToken: UUID) {
         guard phase == .lobby else { return }
         phase = .searching
         errorMessage = nil
@@ -114,7 +114,7 @@ final class BattleViewModel {
             // 片付けを待っている間に「やめる」が押されていたら、相手を探さない
             guard !Task.isCancelled else { return }
             do {
-                let opponentMonster = try await service.findOpponent(monster: myMonster)
+                let opponentMonster = try await service.findOpponent(monster: myMonster, pairingToken: pairingToken)
                 guard !Task.isCancelled else { return }
                 startBattle(against: opponentMonster)
             } catch {
