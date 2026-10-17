@@ -43,6 +43,8 @@ final class BattleViewModel {
     /// 次の対戦で使う自分のモンスター
     /// 【仮】今はランダム。捕まえたモンスターから選べるようにしたら、ここと leaveBattle() の選び直しを置き換える
     private(set) var myMonster = Monster.all.randomElement()!
+    /// 対戦中の相手のモンスター。マッチングするまでは nil
+    private(set) var opponentMonster: Monster?
     private(set) var phase = Phase.lobby
     /// 対戦中の状態。マッチングするまでは nil
     private(set) var state: BattleState?
@@ -125,6 +127,7 @@ final class BattleViewModel {
         finishTask = nil
         Task { await service.leave() }
         state = nil
+        opponentMonster = nil
         outcome = nil
         lastHitOnOpponent = nil
         lastHitOnMe = nil
@@ -133,6 +136,7 @@ final class BattleViewModel {
     }
 
     private func startBattle(against opponentMonster: Monster) {
+        self.opponentMonster = opponentMonster
         state = BattleState(
             Fighter(id: Self.myID, name: myMonster.name, maxHP: BattleEngine.maxHP),
             Fighter(id: Self.opponentID, name: opponentMonster.name, maxHP: BattleEngine.maxHP)
