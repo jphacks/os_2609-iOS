@@ -29,8 +29,8 @@ enum MonsterEntity {
         } catch {
             // 【開発用】原因を調べるためのログ。リリースするときに消してよい
             print("モデル \(monster.modelName) を読み込めませんでした: \(error)")
-            // 開発用の球体。PlaceholderMonsterEntity.swift を消すときは `return Entity()` に置き換える
-            return PlaceholderMonsterEntity.make(size: monster.size)
+            // 読み込めなかったときは何も表示しない
+            return Entity()
         }
     }
 
