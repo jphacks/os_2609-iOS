@@ -14,3 +14,6 @@ build/
 
 # Supabase の接続先（公開リポジトリに鍵を載せない）
 ARApp/Resources/SupabaseSecrets.plist
+
+# 各自の署名設定（Config/Signing.xcconfig.local）
+*.xcconfig.local
