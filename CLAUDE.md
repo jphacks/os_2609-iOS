@@ -63,13 +63,16 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
 - **Service は protocol で定義し、ViewModel に外から渡す。**
   - ESP32 がなくてもダミー実装で開発やテストができるようにするため。
 - **View の部品は、必要になった時点で切り出す。** 使い回す予定のない部品を先回りして作らない。
-  - body が長くなったら、同じファイル内の `private struct` に分ける（例：`IndoorMapView` の `LocationMarkerView`）。
-  - 部品が増えて 1 ファイルが長くなったら（目安 200 行）、その機能のフォルダ内の別ファイルに分ける（例：`Views/Battle/` の `TimingGaugeView`）。
+  - body が長くなったら、同じファイル内の `private struct` に分ける（例：`IndoorMapComponent` の `LocationMarkerComponent`）。
+  - 部品が増えて 1 ファイルが長くなったら（目安 200 行）、その機能のフォルダ内の別ファイルに分ける（例：`Views/Battle/` の `TimingGaugeComponent`）。
   - 同じ見た目を 2 つ以上の画面で使うようになったら、`Views/Components/` に共通の View として切り出す。1 か所でしか使わないうちは切り出さない。
 - **`ContentView` はタブを並べるだけ**にする。「AR に対応した端末か」など画面ごとの判定は、その画面の View の中で行う。
 - **画面をまたいで使う状態は `ContentView` で 1 つだけ作り、各画面に渡す。** 例：現在地の `LocationViewModel` はマップ画面と捕獲画面で共有する。画面ごとに作ると推定が別々に動き、現在地が食い違う。
 - **同じデータを複数の型に重複して持たせない。** 例：地点の ID・名前・マップ上の位置・フィンガープリントはすべて `Location` にまとめる。
-- **SwiftUI の View の名前は、画面も部品も `〜View` で終える**（例：`MapView`、`IndoorMapView`、`ARCaptureView`）。`ARViewContainer` は `UIViewRepresentable` の橋渡し役なので例外。
+- **SwiftUI の View の名前は、画面なら `〜View`、UI の部品なら `〜Component` で終える。** ファイル名も型の名前に合わせる。
+  - 画面：`ContentView` と、そのタブに置く 1 画面ぶんの View（例：`MapView`、`ARCaptureView`、`BattleView`）。
+  - 部品：画面の中に置く View。ボタン、ゲージ、カード、HP バー、マーカーなど（例：`IndoorMapComponent`、`TimingGaugeComponent`、`HPBarComponent`）。`private struct` で同じファイルに置く部品も同じ。
+  - `ARViewContainer` は `UIViewRepresentable` の橋渡し役なので例外。
 - AR セッションのライフサイクル（`run` / `pause`）は `ARViewContainer` で管理する（`makeUIView` で run、`dismantleUIView` で pause）。
   - **`TabView` の中で AR を使う画面は、表示中だけ `ARViewContainer` を置く**（`onAppear` / `onDisappear` で表示中かを持つ。例：`ARCaptureView`）。`TabView` は別のタブに切り替えても画面を残すので、そのままでは `dismantleUIView` が呼ばれず、カメラが動き続ける。
 
