@@ -62,6 +62,10 @@ struct ARCaptureView: View {
                 }
             }
             .animation(.spring, value: viewModel.captureOutcome != nil)
+            // モンスターが現れたら振動させ、画面を見ていなくても気づけるようにする
+            .sensoryFeedback(.warning, trigger: viewModel.wildMonster?.id) { (_: UUID?, id: UUID?) -> Bool in
+                id != nil
+            }
             .overlay(alignment: .bottom) {
                 LocationStatusComponent(viewModel: locationViewModel)
                     .padding(.bottom, 8)

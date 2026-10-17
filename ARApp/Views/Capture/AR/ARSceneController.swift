@@ -9,7 +9,8 @@ import UIKit
 import Combine
 
 /// ARView のシーンを操作する
-/// 担当：床を選んでアンカーを置くこと、エンティティの配置、モンスターを歩かせること、歩いた距離やタップなどシーンのイベントを ViewModel に伝えること
+/// 担当：床を選んでアンカーを置くこと、エンティティの配置、モンスターを歩かせること、
+/// モンスターが画面の外にいるときに、その方向を矢印で示すこと、歩いた距離やタップなどシーンのイベントを ViewModel に伝えること
 /// タップを受け取る `#selector` を使うため、NSObject を継承している
 final class ARSceneController: NSObject {
     /// モンスターが出現する、自分からの距離（m）。近すぎると見つけにくいので、少し離れた場所に出す
@@ -32,12 +33,16 @@ final class ARSceneController: NSObject {
     static let restRange: ClosedRange<Double> = 0.5...2
     /// 捕まえたときに縮んで消えるまでの時間（秒）
     static let disappearDuration: TimeInterval = 0.3
+    /// 矢印を出す位置の、画面の端からの距離（pt）。上の案内や下の現在地の表示に重ならないよう、少し内側に出す
+    static let arrowInset: CGFloat = 70
+    /// 矢印が指す、モンスターの足元からの高さ（m）。体の真ん中あたりを指す
+    static let arrowTargetHeight: Float = 0.5
 
     private let viewModel: ARCaptureViewModel
     private weak var arView: ARView?
     /// モンスターを置く床のアンカー。モンスターはすべてこの子にする
     private var floorAnchor: AnchorEntity?
-    /// 毎フレームの更新の購読。歩いた距離を測るのに使う
+    /// 毎フレームの更新の購読。歩いた距離を測るのと、矢印を動かすのに使う
     private var updateSubscription: Cancellable?
     /// 最後に歩いたとみなした、床の上での自分の位置（ワールド座標の x, z）
     private var lastWalkPoint: SIMD2<Float>?
@@ -50,6 +55,25 @@ final class ARSceneController: NSObject {
     private var isSessionInterrupted = false
     /// 失敗した AR を、少し待ってから開始し直すタスク
     private var restartTask: Task<Void, Never>?
+    /// 画面の外にいるモンスターの方向を指す矢印。ARView の上に置き、毎フレーム位置と向きを変える
+    /// モンスターが画面に映っている間と、モンスターがいない間は隠す
+    private let arrowView: UIImageView = {
+        let image = UIImage(
+            systemName: "arrowtriangle.up.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 44, weight: .bold)
+        )
+        let view = UIImageView(image: image)
+        view.tintColor = .systemYellow
+        // カメラの映像が明るくても見えるよう、影を付ける
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.6
+        view.layer.shadowRadius = 4
+        view.layer.shadowOffset = .zero
+        view.isHidden = true
+        // 矢印の上をタップしても、後ろのモンスターのタップを邪魔しない
+        view.isUserInteractionEnabled = false
+        return view
+    }()
 
     init(viewModel: ARCaptureViewModel) {
         self.viewModel = viewModel
@@ -62,9 +86,11 @@ final class ARSceneController: NSObject {
 
         updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
             self?.measureWalk()
+            self?.updateArrow()
         }
 
         arView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap)))
+        arView.addSubview(arrowView)
     }
 
     /// ViewModel のモンスター一覧に合わせて、床のモンスターを置いたり消したりする
@@ -88,6 +114,7 @@ final class ARSceneController: NSObject {
         updateSubscription = nil
         restartTask?.cancel()
         restartTask = nil
+        arrowView.removeFromSuperview()
         arView = nil
     }
 
@@ -271,6 +298,55 @@ final class ARSceneController: NSObject {
         guard distance >= Self.walkStep else { return }
         self.lastWalkPoint = point
         viewModel.walked(distance: distance)
+    }
+
+    /// モンスターが画面の外にいたら、画面の端に、その方向を指す矢印を出す
+    /// 画面の真ん中からモンスターが映るはずの点へ線を引き、画面の端（arrowInset だけ内側）とぶつかる所に置く
+    private func updateArrow() {
+        guard let arView, let entity = entities.values.first else {
+            arrowView.isHidden = true
+            return
+        }
+        let target = entity.position(relativeTo: nil) + [0, Self.arrowTargetHeight, 0]
+
+        // カメラから見た位置にする。カメラは -Z 方向を向いているので、z が正ならカメラの後ろ
+        let camera = arView.cameraTransform.matrix
+        var local = camera.inverse * SIMD4(target, 1)
+        let isBehind = local.z > 0
+        // 後ろにいると画面に映る点が求められないので、カメラの前に折り返す
+        // 上下左右の向きは変わらないので、右後ろなら右、左後ろなら左を指す
+        if isBehind {
+            local.z = -local.z
+        }
+        let front = camera * local
+        guard let point = arView.project(SIMD3(front.x, front.y, front.z)) else {
+            arrowView.isHidden = true
+            return
+        }
+
+        let bounds = arView.bounds
+        if !isBehind && bounds.contains(point) {
+            arrowView.isHidden = true
+            return
+        }
+
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        var dx = point.x - center.x
+        var dy = point.y - center.y
+        // ちょうど真後ろにいるときは、振り返るよう下を指す
+        if hypot(dx, dy) < 1 {
+            dx = 0
+            dy = 1
+        }
+        // 縦と横のうち、先に画面の端とぶつかる方に合わせる（0 で割ると無限大になり、もう一方が選ばれる）
+        let scale = min(
+            (bounds.width / 2 - Self.arrowInset) / abs(dx),
+            (bounds.height / 2 - Self.arrowInset) / abs(dy)
+        )
+        arrowView.center = CGPoint(x: center.x + dx * scale, y: center.y + dy * scale)
+        // 矢印の画像は上向きなので、右向き（0）から 90° 足す
+        arrowView.transform = CGAffineTransform(rotationAngle: atan2(dy, dx) + .pi / 2)
+        arrowView.isHidden = false
     }
 
     /// タップの当たり判定に使う形を付ける。形がないと arView.entity(at:) で見つからない

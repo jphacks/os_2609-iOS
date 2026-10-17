@@ -41,7 +41,7 @@ ARApp/
 | ファイル | 担当 |
 |---|---|
 | `ARViewContainer` | SwiftUI と ARView の橋渡し（`UIViewRepresentable`）、AR セッションの run / pause |
-| `ARSceneController` | アンカーやエンティティの配置、タップなどシーンのイベントを ViewModel に伝える |
+| `ARSceneController` | アンカーやエンティティの配置、画面の外にいるモンスターを指す矢印、タップなどシーンのイベントを ViewModel に伝える |
 
 `ARSceneController` は `UIViewRepresentable` の Coordinator として使う（`makeCoordinator()` の戻り値）。
 SwiftUI の決まりとしての名前ではなく、役割がわかる名前を付けている。
