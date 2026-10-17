@@ -14,6 +14,9 @@
 | #1 | `feature/location-estimation` | ビーコンの RSSI から現在地を推定する | [feature-location-estimation.md](feature-location-estimation.md) |
 | #2 | `feature/indoor-map` | 屋内マップ画面、3D モデルのモンスター、タブ構成 | [feature-indoor-map.md](feature-indoor-map.md) |
 | #4 | `feature/timing-battle` | タイミングバトル（Supabase でのプレイヤー対戦） | [feature-timing-battle.md](feature-timing-battle.md) |
+| jphacks #2 | `feature/supabase-connection` | リアルタイムバトルに置き換え、Supabase で対戦（`feature/realtime-battle` を含む） | [feature-supabase-connection.md](feature-supabase-connection.md) |
+
+バトルのルールと通信の決まりは [battle.md](battle.md) にまとめている（Android も同じ決まりで実装する）。
 
 ## main に直接積んだ土台（feature ブランチ以前）
 
@@ -35,12 +38,12 @@
 |---|---|---|
 | マップ | `MapView` | 屋内マップに登録地点と推定した現在地を表示 |
 | 捕獲 | `ARCaptureView` | 床を検出してモンスターの 3D モデルを出す。下に現在地と RSSI（開発用）を表示 |
-| バトル | `BattleView` | 現在地と同じ地点にいる相手を探し、タイミングゲージで対戦 |
+| バトル | `BattleView` | 現在地と同じ地点にいる相手を探し、タップで攻撃し合って対戦 |
 
 画面をまたいで使う状態は `ContentView` で 1 つだけ作り、各画面に渡す。
 
 - `LocationViewModel`：現在地の推定。3 つのタブで共有する
-- `BattleService`：対戦の通信。`SupabaseConfig` が空ならダミー（CPU 相手）を使う
+- `BattleService`：対戦の通信。Supabase の接続先（`SupabaseSecrets.plist`）がなければダミー（CPU 相手）を使う
 
 ### フォルダ構成
 
@@ -49,7 +52,8 @@ ARApp/
 ├── App/ARAppApp.swift
 ├── Models/
 │   ├── Location.swift, MapPosition.swift, Monster.swift
-│   └── Battle/          AttackType, BattleMove, BattleProfile, BattleState, TimingGauge, TimingJudgement
+│   └── Battle/          BattleAction, BattleState, Fighter
+├── Logic/               BattleEngine（バトルのルール）
 ├── ViewModels/          LocationViewModel, ARCaptureViewModel, BattleViewModel
 ├── Views/
 │   ├── ContentView.swift
@@ -58,8 +62,11 @@ ARApp/
 │   │   └── AR/          ARViewContainer, ARSceneController, MonsterEntity, PlaceholderMonsterEntity（開発用）
 │   └── Battle/          BattleView と部品（〜Component）、BattleEffects
 ├── Services/            BeaconScanner 系、BattleService 系、SupabaseConfig
-└── Resources/Models/    モンスターの USDZ（Kenney「Cube Pets」、CC0）24 体
-supabase/schema.sql      対戦用のテーブルと join_battle 関数
+└── Resources/
+    ├── Models/          モンスターの USDZ（Kenney「Cube Pets」、CC0）24 体
+    └── SupabaseSecrets.plist  Supabase の接続先（.gitignore 済み。各自で置く）
+supabase/schema.sql      対戦用のテーブルと join_battle / finish_battle 関数
+supabase/SupabaseSecrets.example.plist  接続先のひな形
 ```
 
 ## 主な設計判断（全体）
@@ -81,7 +88,7 @@ supabase/schema.sql      対戦用のテーブルと join_battle 関数
 4. 3 つのタブを確認する。
    - **マップ**：ESP32 のビーコンが動いていれば現在地が出る。動いていなければ「ビーコンを探しています…」のまま。
    - **捕獲**：床を映してゆっくり動かすと、モンスターが出て「〇〇が現れた！」と表示される。
-   - **バトル**：現在地が出ていれば「〇〇で対戦相手を探す」を押せる。`SupabaseConfig` が空なら CPU と対戦する。
+   - **バトル**：現在地が出ていれば「〇〇で対戦相手を探す」を押せる。`SupabaseSecrets.plist` がなければ CPU と対戦する。
 5. シミュレータで起動した場合：
    - ダミーのビーコンで「入口」にいることになる。
    - 捕獲タブは「ARに対応していません」と表示される。
@@ -95,6 +102,6 @@ xcodebuild -project ARApp.xcodeproj -scheme ARApp -destination 'generic/platform
 ## 残っている課題（コードから読み取れるもの）
 
 - `Location.registered` の RSSI は仮の値。会場で測って置き換える必要がある。
-- `SupabaseConfig` の接続先が空。実際に対戦するには Supabase プロジェクトを作って `supabase/schema.sql` を流し、URL と anon key を書く。
+- 実際に対戦するには、`supabase/SupabaseSecrets.example.plist` を `ARApp/Resources/SupabaseSecrets.plist` にコピーし、URL と anon key を書く（鍵はメンバーから受け取る）。
 - 捕獲画面はモンスターを出すところまで。タップして捕獲する処理はまだない。
 - バトルで使うモンスターはランダム。捕獲したモンスターから選ぶ仕組みはない。

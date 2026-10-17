@@ -89,6 +89,7 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
   - 接続先（URL と anon key）は `Resources/SupabaseSecrets.plist` に書く。公開リポジトリなので `.gitignore` 済みで、コミットしない。ひな形は `supabase/SupabaseSecrets.example.plist`。
   - plist がない・値が空なら、CPU が相手になる `DummyBattleService` を使う。
   - `service_role`（secret）の鍵はアプリにもリポジトリにも入れない。
+- バトルのルールと Supabase とのやり取りの決まりは `docs/battle.md` にまとめている。Android も同じ決まりで実装するので、`BattleEngine`・`SupabaseBattleService`・`supabase/schema.sql`・地点の ID・モンスターの `modelName` を変えたら `docs/battle.md` も一緒に直す。
 
 ## ビルド確認
 
