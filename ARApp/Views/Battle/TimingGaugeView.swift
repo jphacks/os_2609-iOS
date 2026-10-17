@@ -27,8 +27,7 @@ struct TimingGaugeView: View {
 
                 ForEach(zones.indices, id: \.self) { index in
                     let zone = zones[index]
-                    let result = index < results.count ? results[index] : nil
-                    let color = result?.color ?? .green
+                    let color = results[index]?.color ?? .green
 
                     RoundedRectangle(cornerRadius: 6)
                         .fill(color.opacity(0.15))
