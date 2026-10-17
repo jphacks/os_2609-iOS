@@ -20,14 +20,19 @@ struct BattleLobbyComponent: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("MONSTER BATTLE")
-                .font(.headline)
+                .font(BattleStyle.display(44))
+                .foregroundStyle(BattleStyle.yellow)
+                .hardShadow(BattleStyle.pink)
 
             // RealityKit ではなく SceneKit で表示する。理由は MonsterModelComponent に書いてある
             // 小さいモンスターも大きく見えるよう、どれも同じ高さにそろえる
             MonsterModelComponent(monster: myMonster, height: 2.4, facing: .radians(0.4))
                 .frame(width: 240, height: 240)
             Text(myMonster.name)
-                .font(.title3.bold())
+                .font(BattleStyle.display(28))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 24)
+                .background(BattleStyle.cyan, in: SlantedRectangle())
 
             Text("「バトルする」を押した人どうしで対戦できます。画面をタップして攻撃しよう")
                 .font(.subheadline)
@@ -36,8 +41,8 @@ struct BattleLobbyComponent: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                    .font(.footnote.bold())
+                    .foregroundStyle(BattleStyle.red)
             }
 
             Spacer()
@@ -45,21 +50,20 @@ struct BattleLobbyComponent: View {
             if isSearching {
                 VStack(spacing: 12) {
                     ProgressView()
+                        .tint(BattleStyle.pink)
                     if isCancelling {
                         Text("相手探しをやめています…")
+                            .font(BattleStyle.display(20))
                     } else {
                         Text("対戦相手を待っています…")
-                        Button("やめる", role: .cancel, action: onCancel)
+                            .font(BattleStyle.display(20))
+                        Button("やめる", action: onCancel)
+                            .buttonStyle(BattleButtonStyle(color: .white))
                     }
                 }
             } else {
-                Button(action: onFind) {
-                    Text("バトルする")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                Button("バトルする", action: onFind)
+                    .buttonStyle(BattleButtonStyle())
             }
         }
     }

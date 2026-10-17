@@ -41,14 +41,15 @@ extension View {
     }
 }
 
-/// タップした位置に広がって消える円
+/// タップした位置に広がって消えるひし形
 struct TapRippleComponent: View {
     @State private var isExpanded = false
 
     var body: some View {
-        Circle()
-            .stroke(.secondary, lineWidth: 2)
-            .frame(width: 60, height: 60)
+        Rectangle()
+            .stroke(BattleStyle.yellow, lineWidth: 3)
+            .frame(width: 44, height: 44)
+            .rotationEffect(.degrees(45))
             .scaleEffect(isExpanded ? 1 : 0.2)
             .opacity(isExpanded ? 0 : 1)
             .onAppear {
@@ -57,7 +58,7 @@ struct TapRippleComponent: View {
     }
 }
 
-/// 続けて当てた回数（「5 HIT!」）。2 回目から出し、回数が増えるほど文字が大きく、10 回からは赤くなる
+/// 続けて当てた回数（「5 HIT!」）。2 回目から出し、回数が増えるほど文字が大きく、10 回からはピンクになる
 /// 回数が増えるたびに、一瞬大きくなって弾む
 struct ComboComponent: View {
     let count: Int
@@ -65,9 +66,9 @@ struct ComboComponent: View {
     var body: some View {
         if count >= 2 {
             Text("\(count) HIT!")
-                .font(.system(size: 28 + CGFloat(min(count, 20)), weight: .heavy, design: .rounded))
-                .foregroundStyle(count >= 10 ? .red : .orange)
-                .shadow(radius: 2)
+                .font(BattleStyle.display(32 + CGFloat(min(count, 20))))
+                .foregroundStyle(count >= 10 ? BattleStyle.pink : BattleStyle.yellow)
+                .onBand(.black)
                 // 画面の右端に置くので、右端を基準に大きくする（真ん中を基準にすると、はみ出す）
                 .phaseAnimator([1, 1.3], trigger: count) { content, scale in
                     content.scaleEffect(scale, anchor: .trailing)

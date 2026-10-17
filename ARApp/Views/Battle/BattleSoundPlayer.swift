@@ -18,9 +18,10 @@ final class BattleSoundPlayer {
         case specialHit
         /// とどめを刺した
         case finishHit
-        /// フィーバーのリーチになった。赤いリーチ（激アツ）は別の音
-        case reach
-        case hotReach
+        /// フィーバーのチャンスの帯が出た・色が上がった。上の色ほど高い音
+        case chanceStep(FeverLottery.Level)
+        /// チャンスの帯が、金まで上がらずに砕けた
+        case chanceBreak
         /// フィーバーが始まった
         case feverStart
         /// 相手の必殺技の予告
@@ -49,12 +50,15 @@ final class BattleSoundPlayer {
     private let finishHit = BattleSoundPlayer.makeHit(pitch: 0.5, length: 0.8, decay: 5, sparkle: 1200)
     /// フィーバー開始：ドミソドと駆け上がる
     private let feverStart = BattleSoundPlayer.makeMelody([(523, 0.07), (659, 0.07), (784, 0.07), (1047, 0.35)])
-    /// リーチ：ピロピロと駆け上がる。激アツは、さらに高く速く、長く駆け上がる
-    private let reach = BattleSoundPlayer.makeMelody([(659, 0.06), (784, 0.06), (988, 0.06), (1319, 0.2)])
-    private let hotReach = BattleSoundPlayer.makeMelody(
-        [(523, 0.04), (659, 0.04), (784, 0.04), (1047, 0.04), (1319, 0.04), (1568, 0.04), (2093, 0.3)],
-        wave: .square
-    )
+    /// チャンスの帯の色が上がる音：色ごとに 1 段ずつ高くなる「ピロン」。金は長く響かせる
+    private let chanceSteps: [FeverLottery.Level: AVAudioPCMBuffer] = [
+        .blue: BattleSoundPlayer.makeMelody([(523, 0.05), (784, 0.15)]),
+        .green: BattleSoundPlayer.makeMelody([(659, 0.05), (988, 0.15)]),
+        .red: BattleSoundPlayer.makeMelody([(784, 0.05), (1175, 0.2)], wave: .square),
+        .gold: BattleSoundPlayer.makeMelody([(1047, 0.05), (1568, 0.05), (2093, 0.4)], wave: .square),
+    ]
+    /// 帯が砕ける音：低く「ガシャン」
+    private let chanceBreak = BattleSoundPlayer.makeHit(pitch: 0.4, length: 0.3, decay: 12)
     /// 予告：高い音と低い音を 2 回くり返す警報
     private let danger = BattleSoundPlayer.makeMelody([(880, 0.12), (660, 0.12), (880, 0.12), (660, 0.2)], wave: .square)
     /// 勝利：ファンファーレ
@@ -85,8 +89,8 @@ final class BattleSoundPlayer {
         case .feverHit: (player, buffer) = (hitPlayer, nextBuffer(of: feverHits))
         case .specialHit: (player, buffer) = (hitPlayer, specialHit)
         case .finishHit: (player, buffer) = (hitPlayer, finishHit)
-        case .reach: (player, buffer) = (jinglePlayer, reach)
-        case .hotReach: (player, buffer) = (jinglePlayer, hotReach)
+        case .chanceStep(let level): (player, buffer) = (jinglePlayer, chanceSteps[level]!)
+        case .chanceBreak: (player, buffer) = (jinglePlayer, chanceBreak)
         case .feverStart: (player, buffer) = (jinglePlayer, feverStart)
         case .danger: (player, buffer) = (jinglePlayer, danger)
         case .victory: (player, buffer) = (jinglePlayer, victory)

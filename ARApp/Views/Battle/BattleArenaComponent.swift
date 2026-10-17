@@ -61,10 +61,9 @@ struct BattleArenaComponent: View {
                 }
                 if !isPlaced {
                     Text("床を映すと、モンスターが現れます")
-                        .font(.headline)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .font(BattleStyle.display(20))
+                        .foregroundStyle(.white)
+                        .battlePanel(accent: BattleStyle.cyan)
                 }
             }
         }

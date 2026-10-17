@@ -8,7 +8,7 @@ import Observation
 
 /// 対戦画面の状態と、バトルの進行
 /// 「バトルする」を押した人どうしをマッチングし（場所は問わない）、お互いにタップで攻撃し合う
-/// 通常攻撃はスタミナを使い、使い切ると休憩になる。攻撃するたびにフィーバーの抽選をし、ときどきリーチになる
+/// 通常攻撃はスタミナを使い、使い切ると休憩になる。攻撃するたびにフィーバーの抽選をし、ときどきチャンスになる
 /// 必殺技はゲージが満タンになると自動で撃つ。相手の必殺技は、予告している間にスワイプするとよけられる
 /// 自分の行動はすぐに反映して相手に送り、相手の行動は届いた順に反映する（どちらも BattleEngine で計算する）
 @Observable
@@ -72,8 +72,16 @@ final class BattleViewModel {
         let dangerID: UUID
     }
 
-    /// リーチになってから結果が出るまでの時間（秒）。ReachComponent はこの時間に合わせてスロットを止める
-    static let reachDuration = 2.0
+    /// チャンスの帯が、色を 1 段階上げるまでの時間（秒）
+    static let chanceStepDuration = 0.7
+    /// 帯の色が止まってから、結果（砕ける・金に光る）を見せる時間（秒）
+    static let chanceResultDuration = 0.9
+
+    /// チャンスになってから結果が出るまでの時間（秒）。上の色まで上がるほど長くなる
+    /// ChanceComponent はこの時間に合わせて色を上げる
+    static func chanceDuration(of chance: FeverLottery.Chance) -> Double {
+        chanceStepDuration * Double(chance.finalLevel.rawValue + 1) + chanceResultDuration
+    }
 
     /// 相手の必殺技が届いてから、受けたかよけたかを決めるまでの時間（秒）。この間、画面に「DANGER!」を出し、スワイプするとよけられる
     static let dangerDuration = 1.0
@@ -110,9 +118,9 @@ final class BattleViewModel {
     private(set) var stamina = Stamina()
     /// 休憩が終わる時刻に、終わったことを stamina に記録するタスク
     private var restTask: Task<Void, Never>?
-    /// 回しているリーチ。リーチでなければ nil
-    private(set) var reach: FeverLottery.Reach?
-    private var reachTask: Task<Void, Never>?
+    /// 見せているチャンス。チャンスでなければ nil
+    private(set) var chance: FeverLottery.Chance?
+    private var chanceTask: Task<Void, Never>?
     /// 自分のフィーバーが終わる時刻。フィーバー中でなければ nil
     /// 時刻で持つので、アプリがバックグラウンドにある間も時間は進む（戻ってきたときに残り時間が増えない）
     private(set) var feverEndsAt: Date?
@@ -194,8 +202,8 @@ final class BattleViewModel {
         if me?.canUseSpecial == true {
             perform(.specialAttack)
         }
-        if action == .normalAttack, reach == nil, me?.canUseFever == true, let drawn = FeverLottery.draw() {
-            startReach(drawn)
+        if action == .normalAttack, chance == nil, me?.canUseFever == true, let drawn = FeverLottery.draw() {
+            startChance(drawn)
         }
     }
 
@@ -221,16 +229,17 @@ final class BattleViewModel {
         myMonster = Monster.all.randomElement()!
     }
 
-    /// リーチを回し、reachDuration 秒たったら結果を出す。当たりならフィーバーを始める
-    private func startReach(_ drawn: FeverLottery.Reach) {
-        reach = drawn
-        reachTask = Task {
+    /// チャンスを見せ、結果が出たら消す。当たりならフィーバーを始める
+    /// チャンスの間も攻撃はできるが、次の抽選はしない
+    private func startChance(_ drawn: FeverLottery.Chance) {
+        chance = drawn
+        chanceTask = Task {
             do {
-                try await Task.sleep(for: .seconds(Self.reachDuration))
+                try await Task.sleep(for: .seconds(Self.chanceDuration(of: drawn)))
             } catch {
                 return // 対戦が終わった
             }
-            reach = nil
+            chance = nil
             if drawn.willWin {
                 startFever()
             }
@@ -374,9 +383,9 @@ final class BattleViewModel {
     }
 
     private func endFever() {
-        reachTask?.cancel()
-        reachTask = nil
-        reach = nil
+        chanceTask?.cancel()
+        chanceTask = nil
+        chance = nil
         feverTask?.cancel()
         feverTask = nil
         feverEndsAt = nil

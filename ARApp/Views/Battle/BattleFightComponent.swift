@@ -7,7 +7,7 @@ import SwiftUI
 
 /// 対戦中の画面。後ろの AR の床の上でモンスター同士が戦い、その上に HP やゲージを重ねる
 /// 操作は 2 つだけ。画面をタップすると通常攻撃、左右にスワイプするとよける（必殺技とフィーバーは自動）
-/// 当たったときの音と振動、リーチ・フィーバー・相手の必殺技の予告・勝利の演出もここで出す
+/// 当たったときの音と振動、フィーバーのチャンス・フィーバー・相手の必殺技の予告・勝利の演出もここで出す
 /// 1 回の対戦の中だけで使う見た目の状態（流すアニメーション、続けて当てた回数など）はここに持つ
 /// 対戦が終わるとこの View ごとなくなるので、次の対戦には前の状態が残らない
 struct BattleFightComponent: View {
@@ -76,15 +76,10 @@ struct BattleFightComponent: View {
             .onChange(of: viewModel.outcome) { onOutcome() }
     }
 
-    /// リーチ・フィーバー・必殺技が始まったときに、音を鳴らしたり溜めの動きを流したりする
+    /// フィーバー・必殺技が始まったときに、音を鳴らしたり溜めの動きを流したりする
     /// 修飾子を 1 つの式に続けすぎると型チェックが終わらなくなるので、body と分けている
     private var screenWithEvents: some View {
         screen
-            .onChange(of: viewModel.reach?.id) {
-                if let reach = viewModel.reach {
-                    BattleSoundPlayer.shared.play(reach.isHot ? .hotReach : .reach)
-                }
-            }
             .onChange(of: viewModel.feverEndsAt) {
                 if viewModel.feverEndsAt != nil {
                     BattleSoundPlayer.shared.play(.feverStart)
@@ -115,7 +110,6 @@ struct BattleFightComponent: View {
             .animation(.easeOut(duration: 0.3), value: viewModel.outcome)
             .animation(.easeOut(duration: 0.3), value: isResultShown)
             .animation(.easeOut(duration: 0.2), value: viewModel.feverEndsAt)
-            .animation(.easeOut(duration: 0.2), value: viewModel.reach?.id)
             // 当たった瞬間に振動させる
             .sensoryFeedback(trigger: impactOnOpponent?.id) { (_: UUID?, _: UUID?) -> SensoryFeedback? in
                 impactFeedback
@@ -123,9 +117,6 @@ struct BattleFightComponent: View {
             // フィーバーが始まったとき、勝ったときは成功の振動、相手の必殺技の予告では警告の振動
             .sensoryFeedback(.success, trigger: viewModel.feverEndsAt) { (_: Date?, endsAt: Date?) -> Bool in
                 endsAt != nil
-            }
-            .sensoryFeedback(.impact(weight: .medium), trigger: viewModel.reach?.id) { (_: UUID?, id: UUID?) -> Bool in
-                id != nil
             }
             .sensoryFeedback(.warning, trigger: viewModel.incomingDanger?.id) { (_: UUID?, id: UUID?) -> Bool in
                 id != nil
@@ -179,13 +170,12 @@ struct BattleFightComponent: View {
     private var layout: some View {
         VStack(spacing: 16) {
             // 1. 上部：相手の名前と HP
-            StatBarComponent(title: opponent.name, value: opponent.hp, maxValue: opponent.maxHP, color: .red)
-                .padding(12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            StatBarComponent(title: opponent.name, value: opponent.hp, maxValue: opponent.maxHP, color: BattleStyle.pink)
+                .battlePanel(accent: BattleStyle.pink)
 
             // 2. 中央：後ろの AR の床の上で戦うモンスターが見えるように空けておく。右上に、続けて当てた回数を出す
             // 回数を出していない間も場所を取るように、透明な View に重ねる（ComboComponent は回数が少ないと空になる）
-            // へとへとで休憩している間は、下の方に「へとへと…」と出す
+            // 下の方に、スタミナが減ってきたら「ハァハァ…」、へとへとで休憩している間は「へとへと…」と出す
             Color.clear
                 .overlay(alignment: .topTrailing) {
                     ComboComponent(count: comboCount)
@@ -193,22 +183,14 @@ struct BattleFightComponent: View {
                 .overlay(alignment: .bottom) {
                     if viewModel.isResting {
                         RestComponent()
+                    } else {
+                        BreathComponent(stamina: viewModel.stamina)
                     }
                 }
 
-            // 3. 下部：自分の HP、スタミナ、必殺技ゲージ、フィーバーゲージ
-            VStack(spacing: 8) {
-                StatBarComponent(title: me.name, value: me.hp, maxValue: me.maxHP, color: .green)
-                StaminaBarComponent(stamina: viewModel.stamina, isResting: viewModel.isResting)
-                StatBarComponent(
-                    title: "必殺技ゲージ（満タンで発動）",
-                    value: me.specialGauge,
-                    maxValue: Fighter.specialGaugeMax,
-                    color: .yellow
-                )
-            }
-            .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            // 3. 下部：自分の HP（スタミナと必殺技ゲージは、出さなくても遊べるので出さない）
+            StatBarComponent(title: me.name, value: me.hp, maxValue: me.maxHP, color: BattleStyle.lime)
+                .battlePanel(accent: BattleStyle.lime)
         }
         .padding()
         .background {
@@ -304,10 +286,10 @@ struct BattleFightComponent: View {
                 DangerComponent(isDodgeFailed: viewModel.lastFailedDodge?.dangerID == danger.id)
                     .id(danger.id)
             }
-            // フィーバーのリーチ。スロットが回っている間も攻撃できるよう、タップは下に通す
-            if let reach = viewModel.reach {
-                ReachComponent(reach: reach)
-                    .id(reach.id)
+            // フィーバーのチャンス。帯が出ている間も攻撃できるよう、タップは下に通す（音と振動は ChanceComponent が出す）
+            if let chance = viewModel.chance {
+                ChanceComponent(chance: chance)
+                    .id(chance.id)
             }
             // 必殺技をよけた・よけられた
             if let hit = lastDodgedHit {

@@ -58,6 +58,10 @@ struct BattleView: View {
                 onCancel: { viewModel.cancelSearch() }
             )
             .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 対戦中の画面と同じく、暗い背景にビビッドな色の文字にする
+            .background(BattleStyle.ink)
+            .environment(\.colorScheme, .dark)
         }
     }
 }
