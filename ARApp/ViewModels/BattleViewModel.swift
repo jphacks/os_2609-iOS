@@ -134,8 +134,7 @@ final class BattleViewModel {
     func startAttack(_ type: AttackType) {
         guard phase == .choosingAction, let battle else { return }
         attackType = type
-        var generator = SystemRandomNumberGenerator()
-        gauge = .random(profile: battle.me.profile, attackType: type, using: &generator)
+        gauge = .random(profile: battle.me.profile, attackType: type)
         zoneResults = Array(repeating: nil, count: gauge.zones.count)
         tapJudgements = []
         turnCombo = battle.me.combo

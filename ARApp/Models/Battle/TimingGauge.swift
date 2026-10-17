@@ -57,11 +57,7 @@ extension TimingGauge {
 
     /// 1 ターンぶんのゲージを作る。判定エリアは毎ターンランダムな位置に置く
     /// ゲージは自分の端末でだけ使い、相手には判定の結果だけを送る
-    static func random(
-        profile: BattleProfile,
-        attackType: AttackType,
-        using generator: inout some RandomNumberGenerator
-    ) -> TimingGauge {
+    static func random(profile: BattleProfile, attackType: AttackType) -> TimingGauge {
         let duration = profile.traverseDuration
         let width = profile.zoneWidth * attackType.zoneWidthMultiplier
 
@@ -70,7 +66,7 @@ extension TimingGauge {
         let zones = (0..<profile.zoneCount).map { index in
             let segmentStart = zoneArea.lowerBound + segmentWidth * Double(index)
             let centerRange = (segmentStart + width / 2)...(segmentStart + segmentWidth - width / 2)
-            return TimingZone(center: Double.random(in: centerRange, using: &generator), width: width)
+            return TimingZone(center: Double.random(in: centerRange), width: width)
         }
         return TimingGauge(traverseDuration: duration, zones: zones)
     }
