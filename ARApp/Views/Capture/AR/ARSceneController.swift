@@ -11,8 +11,11 @@ import Combine
 /// 担当：アンカーやエンティティの配置、モンスターを歩かせること、タップなどシーンのイベントを ViewModel に伝えること
 /// タップを受け取る `#selector` を使うため、NSObject を継承している
 final class ARSceneController: NSObject {
-    /// モンスターが出現・歩き回る範囲。床のアンカーを中心にした円の半径（m）
-    static let areaRadius: Float = 0.8
+    /// モンスターが出現する、床のアンカーからの距離（m）
+    /// アンカーは最初に見つかった床（自分の近く）なので、少し歩かないと届かない距離にする
+    static let spawnDistanceRange: ClosedRange<Float> = 1.5...4
+    /// 出現した場所を中心に歩き回る範囲の半径（m）
+    static let wanderRadius: Float = 0.6
     /// 1 回に歩く距離（m）
     static let stepRange: ClosedRange<Float> = 0.2...0.5
     /// 歩く速さ（m/秒）
@@ -93,13 +96,13 @@ final class ARSceneController: NSObject {
             // ARView.entity(at:) でタップを拾えるのは、当たり判定（CollisionComponent）を持つエンティティだけ
             entity.generateCollisionShapes(recursive: true)
             // y は MonsterEntity が決めた高さのまま（モデルは足元が原点なので 0）
-            let point = Self.randomPointInArea()
-            entity.position = [point.x, entity.position.y, point.y]
+            let home = Self.randomSpawnPoint()
+            entity.position = [home.x, entity.position.y, home.y]
             entity.orientation = simd_quatf(angle: .random(in: 0..<(2 * .pi)), axis: [0, 1, 0])
             floorAnchor.addChild(entity)
             self.entities[wild.id] = entity
 
-            await self.walkAround(entity)
+            await self.walkAround(entity, home: home)
         }
     }
 
@@ -121,10 +124,11 @@ final class ARSceneController: NSObject {
     }
 
     /// 「向きを変える → 歩く → 少し止まる」を、タスクが止められるまで繰り返す
-    private func walkAround(_ entity: Entity) async {
+    /// home は出現した場所。その周りだけを歩く
+    private func walkAround(_ entity: Entity, home: SIMD2<Float>) async {
         while !Task.isCancelled {
             let current = SIMD2(entity.position.x, entity.position.z)
-            let target = Self.nextTarget(from: current)
+            let target = Self.nextTarget(from: current, home: home)
             let direction = target - current
 
             var transform = entity.transform
@@ -158,22 +162,21 @@ final class ARSceneController: NSObject {
         }
     }
 
-    /// 歩ける範囲の中のランダムな点（床の上の x, z）
-    private static func randomPointInArea() -> SIMD2<Float> {
-        // 半径を平方根にすると、円の中に偏りなく散らばる
-        let radius = areaRadius * Float.random(in: 0...1).squareRoot()
+    /// モンスターが出現するランダムな点（床のアンカーから見た x, z）
+    private static func randomSpawnPoint() -> SIMD2<Float> {
+        let distance = Float.random(in: spawnDistanceRange)
         let angle = Float.random(in: 0..<(2 * .pi))
-        return [radius * cos(angle), radius * sin(angle)]
+        return [distance * cos(angle), distance * sin(angle)]
     }
 
     /// 今いる場所から少し離れた、次に歩いていく点
-    private static func nextTarget(from current: SIMD2<Float>) -> SIMD2<Float> {
+    private static func nextTarget(from current: SIMD2<Float>, home: SIMD2<Float>) -> SIMD2<Float> {
         let step = Float.random(in: stepRange)
         let angle = Float.random(in: 0..<(2 * .pi))
         let target = current + [step * cos(angle), step * sin(angle)]
-        // 範囲の外に出てしまうときは、中心に向かって歩かせる
-        if simd_length(target) > areaRadius {
-            return current - simd_normalize(current) * step
+        // 歩き回る範囲の外に出てしまうときは、出現した場所に向かって歩かせる
+        if simd_distance(target, home) > wanderRadius {
+            return current + simd_normalize(home - current) * step
         }
         return target
     }
