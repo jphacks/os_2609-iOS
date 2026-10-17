@@ -10,7 +10,8 @@ import Foundation
 protocol BattleService: AnyObject {
     /// 同じ地点で対戦相手を探す。誰も待っていなければ、自分が待つ側になって相手が来るまで待つ
     /// 待っている間に Task がキャンセルされたら、待つのをやめる
-    func findOpponent(locationID: String, monster: Monster) async throws -> BattleMatch
+    /// 見つかった相手のモンスターを返す
+    func findOpponent(locationID: String, monster: Monster) async throws -> Monster
 
     /// 自分の 1 ターンぶんの攻撃を送る
     func send(_ move: BattleMove, turn: Int) async throws

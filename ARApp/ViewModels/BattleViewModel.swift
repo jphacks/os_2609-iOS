@@ -100,9 +100,9 @@ final class BattleViewModel {
         errorMessage = nil
         searchTask = Task {
             do {
-                let match = try await service.findOpponent(locationID: locationID, monster: myMonster)
+                let opponentMonster = try await service.findOpponent(locationID: locationID, monster: myMonster)
                 guard !Task.isCancelled else { return }
-                battle = BattleState(myMonster: match.myMonster, opponentMonster: match.opponentMonster)
+                battle = BattleState(myMonster: myMonster, opponentMonster: opponentMonster)
                 lastEvent = nil
                 phase = .choosingAction
             } catch {

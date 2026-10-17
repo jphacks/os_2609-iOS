@@ -11,11 +11,11 @@ import Foundation
 final class DummyBattleService: BattleService {
     private var opponentMonster: Monster?
 
-    func findOpponent(locationID: String, monster: Monster) async throws -> BattleMatch {
+    func findOpponent(locationID: String, monster: Monster) async throws -> Monster {
         try await Task.sleep(for: .seconds(1.5))
         let opponent = Monster.all.randomElement()!
         opponentMonster = opponent
-        return BattleMatch(id: UUID().uuidString, myMonster: monster, opponentMonster: opponent)
+        return opponent
     }
 
     func send(_ move: BattleMove, turn: Int) async throws {}

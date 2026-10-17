@@ -53,7 +53,7 @@ final class SupabaseBattleService: BattleService {
         client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey)
     }
 
-    func findOpponent(locationID: String, monster: Monster) async throws -> BattleMatch {
+    func findOpponent(locationID: String, monster: Monster) async throws -> Monster {
         await leave()
         do {
             return try await joinAndWait(locationID: locationID, monster: monster)
@@ -66,7 +66,7 @@ final class SupabaseBattleService: BattleService {
     }
 
     /// join_battle で部屋に入り（または作り）、相手がそろうまで待つ
-    private func joinAndWait(locationID: String, monster: Monster) async throws -> BattleMatch {
+    private func joinAndWait(locationID: String, monster: Monster) async throws -> Monster {
         // 途中でキャンセルされても通信は最後まで行い、部屋の ID を受け取ってから片付けられるようにする
         // （通信ごと取り消すと、サーバーには部屋ができたのに ID がわからず消せなくなる）
         let params = JoinBattleParams(locationID: locationID, playerID: playerID, monster: monster.modelName)
@@ -99,7 +99,7 @@ final class SupabaseBattleService: BattleService {
         guard let name = opponentMonsterName, let opponent = Monster.named(name) else {
             throw ServiceError.invalidData
         }
-        return BattleMatch(id: row.id.uuidString, myMonster: monster, opponentMonster: opponent)
+        return opponent
     }
 
     func send(_ move: BattleMove, turn: Int) async throws {
