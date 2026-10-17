@@ -22,7 +22,7 @@ struct ContentView: View {
             Tab("捕獲", systemImage: "camera.viewfinder") {
                 ARCaptureView(locationViewModel: locationViewModel, collection: monsterCollection)
             }
-            Tab("バトル", systemImage: "bolt.fill") {
+            Tab("マルチバトル", systemImage: "bolt.fill") {
                 BattleView(service: battleService)
             }
         }
