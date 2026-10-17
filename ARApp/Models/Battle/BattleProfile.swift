@@ -17,6 +17,7 @@ struct BattleProfile {
     /// 1 ターンに並ぶ判定エリアの数。多いほど 1 ターンに与えられるダメージが増える
     var zoneCount = 3
     /// GOOD エリアの幅（ゲージ全体を 1 としたとき）
+    /// zoneWidth × zoneCount は 0.86 以下にする。超えるとエリアが TimingGauge の区間に収まらず、ゲージを作るときにクラッシュする
     var zoneWidth = 0.2
 }
 
