@@ -1,5 +1,12 @@
 -- 対戦用のテーブルと関数
--- Supabase のダッシュボードの SQL Editor に貼り付けて、一度だけ実行する
+-- Supabase のダッシュボードの SQL Editor に全部貼り付けて実行する
+-- このファイルを変えたときも、全部貼り直して実行すれば作り直せる
+-- ⚠️ 実行すると、それまでの対戦のデータはすべて消える（対戦中の人がいないときに実行する）
+
+-- 前に作ったテーブルと関数を消す（タイミングバトルで使っていた battle_moves も含む）
+-- テーブルを消すと、Realtime の設定とポリシーも一緒に消える
+drop table if exists battle_actions, battle_moves, battles cascade;
+drop function if exists join_battle, finish_battle;
 
 -- 対戦 1 回ぶん。player1 が部屋を作って待ち、player2 が入ると始まる
 create table battles (
