@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import ARKit
 
 /// 対戦画面。開いている間は自動で対戦相手を待ち、見つかったら対戦が始まる
 /// 画面の空いている所をタップして攻撃し、溜まったら必殺技を撃つ
@@ -29,6 +30,9 @@ struct BattleView: View {
     /// TabView は別のタブに切り替えても画面を残すので、自分で ARView を外してカメラを止める
     @State private var isVisible = false
 
+    /// AR を使える端末では、画面を開いたら自動で対戦相手を待つ
+    /// 【開発用】AR を使えない端末（シミュレータ）では、ロビーの「バトルする」ボタンを押したときだけ待つ
+    private static let waitsAutomatically = ARWorldTrackingConfiguration.isSupported
     /// 決着してから、勝った側が喜び始めるまでの時間（秒）。最後の攻撃の動きを見せてから喜ぶ
     private static let celebrationDelay = 1.0
     /// この時間（秒）次の攻撃を当てなかったら、続けて当てた回数を 0 に戻す
@@ -44,7 +48,9 @@ struct BattleView: View {
         content
             .onAppear {
                 isVisible = true
-                viewModel.startWaiting()
+                if Self.waitsAutomatically {
+                    viewModel.startWaiting()
+                }
             }
             .onDisappear {
                 isVisible = false
@@ -57,8 +63,13 @@ struct BattleView: View {
         if let me = viewModel.me, let opponent = viewModel.opponent, let opponentMonster = viewModel.opponentMonster {
             fightScreen(me: me, opponent: opponent, opponentMonster: opponentMonster)
         } else {
-            BattleLobbyComponent(myMonster: viewModel.myMonster, errorMessage: viewModel.errorMessage)
-                .padding()
+            BattleLobbyComponent(
+                myMonster: viewModel.myMonster,
+                isWaiting: viewModel.phase == .searching,
+                errorMessage: viewModel.errorMessage,
+                onStart: Self.waitsAutomatically ? nil : { viewModel.startWaiting() }
+            )
+            .padding()
         }
     }
 
@@ -143,6 +154,10 @@ struct BattleView: View {
             // 決着が確定したら結果を全面に出す
             if let outcome = viewModel.outcome {
                 BattleResultComponent(outcome: outcome, opponentName: opponent.name) {
+                    // 【開発用】ボタンで待ち始める端末では、次もボタンを押すまで待たない
+                    if !Self.waitsAutomatically {
+                        viewModel.stopWaiting()
+                    }
                     viewModel.leaveBattle()
                 }
                 .transition(.opacity)

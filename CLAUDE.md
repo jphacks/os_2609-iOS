@@ -102,7 +102,8 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
   - xcconfig はターゲットのビルド設定に付ける。プロジェクト全体に付けると、Xcode 27.2 beta が実行のたびに Team ID を pbxproj に書き戻す。
 - デプロイメントターゲットは iOS 26.2。デフォルトのアクター隔離は `MainActor`。
 - AR は実機でのみ動作する。シミュレータでは非対応メッセージが表示される。
-  - バトル画面は、AR を使えなくても対戦（HP やタップ）だけは動くので、`BattleView` の #Preview で確かめられる。モンスターは表示されない。
+  - バトル画面は、AR を使えなくても対戦（HP やタップ）だけは動くので、`BattleView` の #Preview やシミュレータで確かめられる。モンスターは表示されない。
+  - AR を使える端末ではバトルの画面を開くと自動で相手を待つが、AR を使えない端末では「バトルする」ボタン（開発用）を押したときだけ待つ。
 - 対戦と、会場に出現するモンスターの共有は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/` にある。
   - 対戦は `supabase/schema.sql`、モンスターの出現と捕獲は `supabase/wild_monsters.sql`。別のファイルなので、片方を実行し直してももう片方のデータは消えない。
   - 接続先（URL と anon key）は `Resources/SupabaseSecrets.plist` に書く。公開リポジトリなので `.gitignore` 済みで、コミットしない。ひな形は `supabase/SupabaseSecrets.example.plist`。
