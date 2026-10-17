@@ -46,7 +46,7 @@ final class BattleViewModel {
     private(set) var myMonster = Monster.all.randomElement()!
     /// 対戦中の相手のモンスター。マッチングするまでは nil
     private(set) var opponentMonster: Monster?
-    private(set) var phase = Phase.lobby
+    private var phase = Phase.lobby
     /// 対戦中の状態。マッチングするまでは nil
     private(set) var state: BattleState?
     /// 確定した決着。決着がついていない、またはまだ確定していなければ nil

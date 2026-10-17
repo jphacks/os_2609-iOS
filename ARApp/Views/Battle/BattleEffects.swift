@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-/// バトル画面の演出（揺れ、踏み込み、タップの波紋、画面の光、続けて当てた回数）と、演出のタイミング
-/// ダメージの数字は AR の中に出す（BattleARSceneController）
+/// バトル画面の演出（揺れ、タップの波紋、画面の光、続けて当てた回数）と、演出のタイミング
+/// 踏み込みとダメージの数字は AR の中で見せる（BattleARSceneController）
 
 extension BattleViewModel.Hit {
     /// 必殺技を撃つ前の溜めの動き
@@ -29,15 +29,6 @@ extension View {
             content.offset(x: x)
         } animation: { _ in
             .linear(duration: 0.05)
-        }
-    }
-
-    /// trigger が変わるたびに offset の方向へ踏み込んで戻る（攻撃する演出）
-    func lunge(_ offset: CGSize, trigger: UUID?) -> some View {
-        phaseAnimator([CGSize.zero, offset, .zero], trigger: trigger) { content, value in
-            content.offset(value)
-        } animation: { _ in
-            .easeOut(duration: 0.08)
         }
     }
 }
