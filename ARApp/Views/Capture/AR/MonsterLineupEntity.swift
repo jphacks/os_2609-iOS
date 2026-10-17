@@ -15,7 +15,7 @@ import UIKit
 /// 【開発用】全モンスターを輪にして並べる
 enum MonsterLineupEntity {
     /// 輪の半径（m）。アンカー（最初に見つかった床）が中心になる
-    private static let radius: Float = 1.5
+    private static let radius: Float = 2.5
 
     static func make() async -> Entity {
         let lineup = Entity()
