@@ -24,6 +24,8 @@ struct BattleArenaComponent: View {
     let isVisible: Bool
     /// 床にモンスターを置き終わったか。置くまでは「床を映して」と案内する
     @State private var isPlaced = false
+    /// ARView を置いてよいか。表示されてから少し待って true にする
+    @State private var canShowARView = false
 
     var body: some View {
         ZStack {
@@ -35,7 +37,7 @@ struct BattleArenaComponent: View {
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .padding()
-            } else if isVisible {
+            } else if isVisible && canShowARView {
                 // 外すと BattleARViewContainer の dismantleUIView が呼ばれ、セッションが止まる
                 // ARView は最初から表示する場所の大きさで作る必要があるので、大きさが決まってから置く
                 GeometryReader { proxy in
@@ -70,6 +72,14 @@ struct BattleArenaComponent: View {
         // ARView を外すとモンスターもいなくなるので、次に表示したときは床を探すところからやり直す
         .onChange(of: isVisible) {
             if !isVisible { isPlaced = false }
+        }
+        // ロビーの 3D 表示（BattleLobbyComponent）が片付くのを待ってから ARView を置く
+        // 2 つが同時にあると、描く場所を取り合って、ARView が真っ黒になることがある
+        .task(id: isVisible) {
+            canShowARView = false
+            guard isVisible else { return }
+            try? await Task.sleep(for: .seconds(BattleMonsterComponent.switchDelay))
+            canShowARView = !Task.isCancelled
         }
     }
 }

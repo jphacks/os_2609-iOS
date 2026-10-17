@@ -18,6 +18,8 @@ struct BattleLobbyComponent: View {
     let onCancel: () -> Void
     /// ときどき手を振るアニメーション
     @State private var waveAnimation: MonsterAnimationRequest?
+    /// 3D のモンスターを表示してよいか。表示されてから少し待って true にする
+    @State private var canShowMonster = false
 
     /// 手を振る間隔（秒）
     private static let waveIntervalRange: ClosedRange<Double> = 4...8
@@ -27,19 +29,29 @@ struct BattleLobbyComponent: View {
             Text("MONSTER BATTLE")
                 .font(.headline)
 
-            BattleMonsterComponent(monster: myMonster, animation: waveAnimation, facing: 0.4)
-                .frame(width: 240, height: 240)
-                // 画面が表示されている間、ときどき手を振る
-                .task {
-                    while true {
-                        do {
-                            try await Task.sleep(for: .seconds(Double.random(in: Self.waveIntervalRange)))
-                        } catch {
-                            return // 画面が閉じられた
-                        }
-                        waveAnimation = MonsterAnimationRequest(animations: [.wave])
-                    }
+            ZStack {
+                if canShowMonster {
+                    BattleMonsterComponent(monster: myMonster, animation: waveAnimation, facing: 0.4)
                 }
+            }
+            .frame(width: 240, height: 240)
+            // 対戦中の画面の ARView が片付くのを待ってから表示する
+            // 2 つが同時にあると、描く場所を取り合って、次の対戦の ARView が真っ黒になることがある
+            .task {
+                try? await Task.sleep(for: .seconds(BattleMonsterComponent.switchDelay))
+                canShowMonster = !Task.isCancelled
+            }
+            // 画面が表示されている間、ときどき手を振る
+            .task {
+                while true {
+                    do {
+                        try await Task.sleep(for: .seconds(Double.random(in: Self.waveIntervalRange)))
+                    } catch {
+                        return // 画面が閉じられた
+                    }
+                    waveAnimation = MonsterAnimationRequest(animations: [.wave])
+                }
+            }
             Text(myMonster.name)
                 .font(.title3.bold())
 

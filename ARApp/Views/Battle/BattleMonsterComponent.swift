@@ -17,6 +17,10 @@ struct BattleMonsterComponent: View {
 
     @State private var model: Entity?
 
+    /// 対戦前の画面と対戦中の画面を切り替えるとき、前の画面の 3D 表示（RealityView・ARView）が片付くのを待つ時間（秒）
+    /// 2 つが同時にあると、描く場所を取り合って、ARView が真っ黒になることがある
+    static let switchDelay = 0.3
+
     var body: some View {
         RealityView { content in
             content.camera = .virtual
