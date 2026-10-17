@@ -130,8 +130,11 @@ struct BattleFightComponent: View {
             .sensoryFeedback(.warning, trigger: viewModel.incomingDanger?.id) { (_: UUID?, id: UUID?) -> Bool in
                 id != nil
             }
-            // よけるためにスワイプしたら軽く振動させ、へとへとになったらエラーの振動で知らせる
+            // よけるためにスワイプしたら軽く振動させ、へとへとになったときと、よけられなかったときはエラーの振動で知らせる
             .sensoryFeedback(.impact(weight: .light), trigger: viewModel.lastDodge?.id)
+            .sensoryFeedback(.error, trigger: viewModel.lastFailedDodge?.id) { (_: UUID?, id: UUID?) -> Bool in
+                id != nil
+            }
             .sensoryFeedback(.error, trigger: viewModel.isResting) { (_: Bool, isResting: Bool) -> Bool in
                 isResting
             }
@@ -298,7 +301,7 @@ struct BattleFightComponent: View {
             }
             // 相手の必殺技の予告
             if let danger = viewModel.incomingDanger {
-                DangerComponent()
+                DangerComponent(isDodgeFailed: viewModel.lastFailedDodge?.dangerID == danger.id)
                     .id(danger.id)
             }
             // フィーバーのリーチ。スロットが回っている間も攻撃できるよう、タップは下に通す

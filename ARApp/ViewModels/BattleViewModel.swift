@@ -65,6 +65,13 @@ final class BattleViewModel {
         let toRight: Bool
     }
 
+    /// 相手の必殺技の予告中にスワイプしたが、休憩中やスタミナが足りなくてよけられなかった出来事
+    struct FailedDodge: Identifiable {
+        let id = UUID()
+        /// よけられなかった予告の id
+        let dangerID: UUID
+    }
+
     /// リーチになってから結果が出るまでの時間（秒）。ReachComponent はこの時間に合わせてスロットを止める
     static let reachDuration = 2.0
 
@@ -97,6 +104,8 @@ final class BattleViewModel {
     private(set) var lastDodge: Dodge?
     /// スワイプしてよけた予告の id。予告が終わったときにこれと同じなら、よけたことになる
     private var dodgedDangerID: UUID?
+    /// 最後によけられなかった出来事。変わるたびに振動させ、予告の文字を「よけられない」に変える
+    private(set) var lastFailedDodge: FailedDodge?
     /// 自分のスタミナ。値は時間とともに変わるので、表示するときは value(at:) で求める
     private(set) var stamina = Stamina()
     /// 休憩が終わる時刻に、終わったことを stamina に記録するタスク
@@ -190,10 +199,16 @@ final class BattleViewModel {
         }
     }
 
-    /// 画面が左右にスワイプされたときに呼ぶ。休憩中やスタミナが足りないときは何も起きない
-    /// 相手の必殺技を予告している間なら、よけたことになる
+    /// 画面が左右にスワイプされたときに呼ぶ。休憩中やスタミナが足りないときはよけられない
+    /// 相手の必殺技を予告している間なら、よけたことになる（よけられなかったら、そのことを知らせる）
     func dodge(toRight: Bool) {
-        guard phase == .fighting, finishTask == nil, stamina.spendForDodge(at: .now) else { return }
+        guard phase == .fighting, finishTask == nil else { return }
+        guard stamina.spendForDodge(at: .now) else {
+            if let incomingDanger {
+                lastFailedDodge = FailedDodge(dangerID: incomingDanger.id)
+            }
+            return
+        }
         lastDodge = Dodge(toRight: toRight)
         if let incomingDanger {
             dodgedDangerID = incomingDanger.id
@@ -255,6 +270,7 @@ final class BattleViewModel {
         incomingDanger = nil
         lastDodge = nil
         dodgedDangerID = nil
+        lastFailedDodge = nil
         phase = .lobby
     }
 

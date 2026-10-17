@@ -8,6 +8,8 @@ import SwiftUI
 /// 相手の必殺技の予告。画面の縁を赤く点滅させ、「DANGER!」を出す
 /// 予告している間だけ置く（BattleViewModel の incomingDanger があるとき）
 struct DangerComponent: View {
+    /// スワイプしたが、休憩中やスタミナが足りなくてよけられなかったか
+    let isDodgeFailed: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isShown = false
 
@@ -21,7 +23,7 @@ struct DangerComponent: View {
                 Text("DANGER!")
                     .font(.system(size: 56, weight: .black, design: .rounded))
                     .italic()
-                Text("左右にスワイプでよけろ！")
+                Text(isDodgeFailed ? "スタミナが足りなくて、よけられない！" : "左右にスワイプでよけろ！")
                     .font(.headline)
             }
             .foregroundStyle(.red)
@@ -38,6 +40,9 @@ struct DangerComponent: View {
 }
 
 #Preview {
-    DangerComponent()
-        .background(.black)
+    VStack(spacing: 40) {
+        DangerComponent(isDodgeFailed: false)
+        DangerComponent(isDodgeFailed: true)
+    }
+    .background(.black)
 }
