@@ -1,0 +1,5 @@
+DEVELOPMENT_TEAM =
+BUNDLE_ID_PREFIX = erika.com
+
+// 各自の署名設定（.gitignore 済み）。無くてもシミュレーター向けにはビルドできるよう任意読み込みにしている
+#include? "Signing.xcconfig.local"
