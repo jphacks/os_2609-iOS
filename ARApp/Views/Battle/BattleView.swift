@@ -15,6 +15,8 @@ struct BattleView: View {
     struct WildBattle {
         /// 相手の野生のモンスター。対戦前の画面に、自分のモンスターと並べて出す
         let monster: Monster
+        /// 捕獲画面から引き継ぐ AR。対戦中は、捕獲画面と同じ AR セッションで、野生のモンスターがいた場所に相手を置く
+        let arHandoff: ARHandoff
         /// 決着して、勝ち負けの演出を見せ終わったときに呼ぶ。勝敗の結果の画面は出さない（捕獲画面が捕獲の結果を出す）
         let onFinish: (BattleViewModel.Outcome) -> Void
         /// 対戦前に「にげる」が押されたときに呼ぶ
@@ -67,6 +69,7 @@ struct BattleView: View {
                 myMonster: viewModel.myMonster,
                 opponentMonster: opponentMonster,
                 isVisible: isVisible,
+                arHandoff: wildBattle?.arHandoff,
                 onFinish: wildBattle?.onFinish
             )
         } else {

@@ -18,6 +18,8 @@ struct BattleFightComponent: View {
     let opponentMonster: Monster
     /// バトルの画面が表示されているか。表示されている間だけ AR を動かす
     let isVisible: Bool
+    /// 野生のモンスターとのバトルで、捕獲画面から引き継ぐ AR。ほかのプレイヤーとの対戦なら nil
+    let arHandoff: ARHandoff?
     /// 野生のモンスターとのバトルで、勝ち負けの演出を見せ終わったときに呼ぶ
     /// 渡したときは勝敗の結果（BattleResultComponent）を出さない。nil なら結果を出し、ロビーに戻るボタンを置く
     let onFinish: ((BattleViewModel.Outcome) -> Void)?
@@ -215,7 +217,8 @@ struct BattleFightComponent: View {
                 myDodge: viewModel.lastDodge,
                 isFeverActive: viewModel.feverEndsAt != nil,
                 isVictory: viewModel.outcome == .won,
-                isVisible: isVisible
+                isVisible: isVisible,
+                arHandoff: arHandoff
             )
             // 攻撃を受けたら、カメラの映像ごと揺らす（視差効果を減らす設定のときは揺らさない）
             .shake(trigger: reduceMotion ? nil : viewModel.lastHitOnMe?.id)

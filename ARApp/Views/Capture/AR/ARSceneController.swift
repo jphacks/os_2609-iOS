@@ -55,25 +55,8 @@ final class ARSceneController: NSObject {
     private var isSessionInterrupted = false
     /// 失敗した AR を、少し待ってから開始し直すタスク
     private var restartTask: Task<Void, Never>?
-    /// 画面の外にいるモンスターの方向を指す矢印。ARView の上に置き、毎フレーム位置と向きを変える
-    /// モンスターが画面に映っている間と、モンスターがいない間は隠す
-    private let arrowView: UIImageView = {
-        let image = UIImage(
-            systemName: "arrowtriangle.up.fill",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 44, weight: .bold)
-        )
-        let view = UIImageView(image: image)
-        view.tintColor = .systemYellow
-        // カメラの映像が明るくても見えるよう、影を付ける
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.6
-        view.layer.shadowRadius = 4
-        view.layer.shadowOffset = .zero
-        view.isHidden = true
-        // 矢印の上をタップしても、後ろのモンスターのタップを邪魔しない
-        view.isUserInteractionEnabled = false
-        return view
-    }()
+    /// 画面の外にいるモンスターの方向を指す矢印
+    private let arrow = MonsterArrow(inset: arrowInset)
 
     init(viewModel: ARCaptureViewModel) {
         self.viewModel = viewModel
@@ -90,7 +73,7 @@ final class ARSceneController: NSObject {
         }
 
         arView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap)))
-        arView.addSubview(arrowView)
+        arrow.attach(to: arView)
     }
 
     /// ViewModel のモンスター一覧に合わせて、床のモンスターを置いたり消したりする
@@ -114,7 +97,7 @@ final class ARSceneController: NSObject {
         updateSubscription = nil
         restartTask?.cancel()
         restartTask = nil
-        arrowView.removeFromSuperview()
+        arrow.detach()
         arView = nil
     }
 
@@ -301,52 +284,10 @@ final class ARSceneController: NSObject {
     }
 
     /// モンスターが画面の外にいたら、画面の端に、その方向を指す矢印を出す
-    /// 画面の真ん中からモンスターが映るはずの点へ線を引き、画面の端（arrowInset だけ内側）とぶつかる所に置く
     private func updateArrow() {
-        guard let arView, let entity = entities.values.first else {
-            arrowView.isHidden = true
-            return
-        }
-        let target = entity.position(relativeTo: nil) + [0, Self.arrowTargetHeight, 0]
-
-        // カメラから見た位置にする。カメラは -Z 方向を向いているので、z が正ならカメラの後ろ
-        let camera = arView.cameraTransform.matrix
-        var local = camera.inverse * SIMD4(target, 1)
-        let isBehind = local.z > 0
-        // 後ろにいると画面に映る点が求められないので、カメラの前に折り返す
-        // 上下左右の向きは変わらないので、右後ろなら右、左後ろなら左を指す
-        if isBehind {
-            local.z = -local.z
-        }
-        let front = camera * local
-        guard let point = arView.project(SIMD3(front.x, front.y, front.z)) else {
-            arrowView.isHidden = true
-            return
-        }
-
-        let bounds = arView.bounds
-        if !isBehind && bounds.contains(point) {
-            arrowView.isHidden = true
-            return
-        }
-
-        let center = CGPoint(x: bounds.midX, y: bounds.midY)
-        var dx = point.x - center.x
-        var dy = point.y - center.y
-        // ちょうど真後ろにいるときは、振り返るよう下を指す
-        if hypot(dx, dy) < 1 {
-            dx = 0
-            dy = 1
-        }
-        // 縦と横のうち、先に画面の端とぶつかる方に合わせる（0 で割ると無限大になり、もう一方が選ばれる）
-        let scale = min(
-            (bounds.width / 2 - Self.arrowInset) / abs(dx),
-            (bounds.height / 2 - Self.arrowInset) / abs(dy)
-        )
-        arrowView.center = CGPoint(x: center.x + dx * scale, y: center.y + dy * scale)
-        // 矢印の画像は上向きなので、右向き（0）から 90° 足す
-        arrowView.transform = CGAffineTransform(rotationAngle: atan2(dy, dx) + .pi / 2)
-        arrowView.isHidden = false
+        guard let arView else { return }
+        let target = entities.values.first.map { $0.position(relativeTo: nil) + [0, Self.arrowTargetHeight, 0] }
+        arrow.update(pointingAt: target, in: arView)
     }
 
     /// タップの当たり判定に使う形を付ける。形がないと arView.entity(at:) で見つからない
@@ -362,8 +303,8 @@ final class ARSceneController: NSObject {
         // 当たるのはモデルの中の部品なので、親をたどって床に置いたモンスターを探す
         var hit = arView.entity(at: recognizer.location(in: arView))
         while let entity = hit {
-            if let id = entities.first(where: { $0.value === entity })?.key {
-                viewModel.monsterTapped(id: id)
+            if let (id, monster) = entities.first(where: { $0.value === entity }) {
+                viewModel.monsterTapped(id: id, position: monster.position(relativeTo: nil))
                 return
             }
             hit = entity.parent

@@ -11,7 +11,8 @@ import Combine
 /// バトル画面の ARView のシーンを操作する
 /// 担当：床が見つかったら自分と相手のモンスターを置くこと、アニメーション（立っている間の動きも）を流すこと、
 /// 攻撃したときに踏み込ませること、よけるときに横にかわさせること、攻撃が当たったら受けた側を光らせて火花とダメージの数字を出すこと、
-/// フィーバー中に自分のモンスターから金色の光を出すこと、相手の必殺技の予告で相手を赤く光らせること、勝ったときに金色の火花を散らすこと
+/// フィーバー中に自分のモンスターから金色の光を出すこと、相手の必殺技の予告で相手を赤く光らせること、勝ったときに金色の火花を散らすこと、
+/// 相手のモンスターが画面の外にいるときに、その方向を矢印で示すこと
 final class BattleARSceneController {
     /// 光らせる、モデルの部品 1 つぶん。元のマテリアルと光らせたマテリアルを持っておき、入れ替える
     private struct FlashPart {
@@ -70,11 +71,24 @@ final class BattleARSceneController {
     /// 火花を出す場所。体の高さに掛ける割合と、体の中に隠れないよう攻撃した側へ出す距離（m）
     static let sparkHeightRatio: Float = 0.55
     static let sparkForwardOffset: Float = 0.15
+    /// 矢印を出す位置の、画面の端からの距離（pt）。上と下の HP の表示に重ならないよう、内側に出す
+    static let arrowInset: CGFloat = 120
+    /// 野生のモンスターとのバトルで、自分のモンスターと相手のモンスターの間を空ける距離（m）の最大と最小
+    /// 相手がカメラに近いときは、自分のモンスターがカメラに近づきすぎないよう、間を詰める
+    static let handoffSpacingRange: ClosedRange<Float> = 0.6...(opponentDistance - myDistance)
+    /// 野生のモンスターとのバトルで、自分のモンスターをカメラから最低限離す距離（m）
+    static let handoffMinimumMyDistance: Float = 0.6
 
     private let myMonster: Monster
     private let opponentMonster: Monster
     /// 2 体とも床に置き終わったときに呼ぶ
     private let onPlaced: () -> Void
+    /// 野生のモンスターとのバトルで、捕獲画面から引き継いだ AR。ほかのプレイヤーとの対戦なら nil
+    private let arHandoff: ARHandoff?
+    /// 毎フレームの更新の購読。矢印を動かすのに使う
+    private var updateSubscription: Cancellable?
+    /// 画面の外にいる相手のモンスターの方向を指す矢印
+    private let arrow = MonsterArrow(inset: arrowInset)
     private weak var arView: ARView?
     private var floorAnchor: AnchorEntity?
     /// アンカーの配置状態の購読。保持していないとすぐに解除される
@@ -117,14 +131,32 @@ final class BattleARSceneController {
     private var myHeight: Float { myMonster.size * Self.sizeScale }
     private var opponentHeight: Float { opponentMonster.size * Self.sizeScale }
 
-    init(myMonster: Monster, opponentMonster: Monster, onPlaced: @escaping () -> Void) {
+    init(myMonster: Monster, opponentMonster: Monster, arHandoff: ARHandoff?, onPlaced: @escaping () -> Void) {
         self.myMonster = myMonster
         self.opponentMonster = opponentMonster
+        self.arHandoff = arHandoff
         self.onPlaced = onPlaced
     }
 
+    /// 捕獲画面から引き継いだ AR セッションを使っているか。使っていれば、ARView を外してもセッションを止めない
+    var usesHandoff: Bool { arHandoff != nil }
+
     func start(in arView: ARView) {
         self.arView = arView
+        arrow.attach(to: arView)
+        updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
+            self?.updateArrow()
+        }
+
+        // 捕獲画面のセッションを引き継いだときは、床を探し直さず、すぐに置く
+        // 相手は野生のモンスターがいた場所（ワールド座標）に置くので、アンカーはワールドの原点に固定する
+        if arHandoff != nil {
+            let anchor = AnchorEntity(world: .zero)
+            arView.scene.addAnchor(anchor)
+            floorAnchor = anchor
+            placeTask = Task { await placeMonsters() }
+            return
+        }
 
         // 20cm 四方以上の床が見つかったら、そこに自動で固定されるアンカー（捕獲画面と同じ）
         let anchor = AnchorEntity(.plane(.horizontal, classification: .floor, minimumBounds: [0.2, 0.2]))
@@ -235,6 +267,9 @@ final class BattleARSceneController {
     func stop() {
         placeTask?.cancel()
         placeTask = nil
+        updateSubscription?.cancel()
+        updateSubscription = nil
+        arrow.detach()
         anchoredSubscription?.cancel()
         anchoredSubscription = nil
         floorAnchor = nil
@@ -254,18 +289,7 @@ final class BattleARSceneController {
         let opponent = await MonsterEntity.make(from: opponentMonster, height: opponentHeight)
         guard let arView, let floorAnchor, !Task.isCancelled else { return }
 
-        // 置く場所は、置くときのカメラの位置と向きで決める（床のアンカーの場所は、カメラの前とは限らない）
-        // カメラは -Z 方向を向いているので、その向きを床と平行にしたものを「前」にする
-        let camera = arView.cameraTransform.matrix
-        var forward = SIMD2(-camera.columns.2.x, -camera.columns.2.z)
-        // 真下を向いていると前がわからないので、そのときはワールドの -Z を前にする
-        forward = simd_length(forward) > 0.1 ? simd_normalize(forward) : [0, -1]
-        let right = SIMD2(-forward.y, forward.x)
-        let cameraPosition = SIMD2(camera.columns.3.x, camera.columns.3.z)
-        let myPosition = cameraPosition + forward * Self.myDistance - right * Self.sideOffset
-        let opponentPosition = cameraPosition + forward * Self.opponentDistance + right * Self.sideOffset
-
-        let floorY = floorAnchor.position(relativeTo: nil).y
+        let (myPosition, opponentPosition, floorY) = placement(in: arView, floorAnchor: floorAnchor)
         for (entity, position, target) in [(me, myPosition, opponentPosition), (opponent, opponentPosition, myPosition)] {
             floorAnchor.addChild(entity)
             entity.setPosition([position.x, floorY, position.y], relativeTo: nil)
@@ -294,6 +318,43 @@ final class BattleARSceneController {
             entity.monsterAnimator?.play(animation)
         }
         onPlaced()
+    }
+
+    /// 自分と相手のモンスターを置く場所（ワールド座標の x, z）と、床の高さ（ワールド座標の y）
+    private func placement(in arView: ARView, floorAnchor: AnchorEntity) -> (me: SIMD2<Float>, opponent: SIMD2<Float>, floorY: Float) {
+        // 置く場所は、置くときのカメラの位置と向きで決める（床のアンカーの場所は、カメラの前とは限らない）
+        // カメラは -Z 方向を向いているので、その向きを床と平行にしたものを「前」にする
+        let camera = arView.cameraTransform.matrix
+        let cameraPosition = SIMD2(camera.columns.3.x, camera.columns.3.z)
+        var forward = SIMD2(-camera.columns.2.x, -camera.columns.2.z)
+        // 真下を向いていると前がわからないので、そのときはワールドの -Z を前にする
+        forward = simd_length(forward) > 0.1 ? simd_normalize(forward) : [0, -1]
+
+        // 野生のモンスターとのバトル：相手は、捕獲画面でいた場所にそのまま置く
+        // 自分は、自分（カメラ）と相手を結ぶ線の上で、相手の手前に置く（相手が真正面になるよう、左にずらす）
+        if let arHandoff {
+            let opponent = SIMD2(arHandoff.opponentPosition.x, arHandoff.opponentPosition.z)
+            let toOpponent = opponent - cameraPosition
+            let distance = simd_length(toOpponent)
+            let direction = distance > 0.1 ? toOpponent / distance : forward
+            let right = SIMD2(-direction.y, direction.x)
+            let spacing = min(max(distance - Self.handoffMinimumMyDistance, Self.handoffSpacingRange.lowerBound), Self.handoffSpacingRange.upperBound)
+            let me = opponent - direction * spacing - right * Self.sideOffset
+            return (me, opponent, arHandoff.opponentPosition.y)
+        }
+
+        let right = SIMD2(-forward.y, forward.x)
+        let me = cameraPosition + forward * Self.myDistance - right * Self.sideOffset
+        let opponent = cameraPosition + forward * Self.opponentDistance + right * Self.sideOffset
+        return (me, opponent, floorAnchor.position(relativeTo: nil).y)
+    }
+
+    /// 相手のモンスターが画面の外にいたら、画面の端に、その方向を指す矢印を出す
+    /// 自分のモンスターは相手の手前にいるので、相手が映っていればどちらも見える
+    private func updateArrow() {
+        guard let arView else { return }
+        let target = opponentEntity.map { $0.position(relativeTo: nil) + [0, opponentHeight / 2, 0] }
+        arrow.update(pointingAt: target, in: arView)
     }
 
     /// 相手の方へ少し踏み込んで、元の場所に戻る（攻撃する演出）

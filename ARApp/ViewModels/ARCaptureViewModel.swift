@@ -39,6 +39,9 @@ final class ARCaptureViewModel {
     private(set) var wildMonster: WildMonster?
     /// バトルしている野生のモンスター。バトル中でなければ nil
     private(set) var battleMonster: WildMonster?
+    /// バトルしている野生のモンスターがいた場所（AR のワールド座標、足元）。バトル中でなければ nil
+    /// バトルでも捕獲画面と同じ AR セッションを使うので、バトルの相手をこの場所にそのまま置ける
+    private(set) var battleMonsterPosition: SIMD3<Float>?
     /// 次のモンスターが出るまでに、あと何 m 歩くか
     /// 歩くたびに変わるが、画面には出さないので View の更新のきっかけにしない
     @ObservationIgnored private var remainingWalkDistance = Float.random(in: spawnWalkDistanceRange)
@@ -105,12 +108,14 @@ final class ARCaptureViewModel {
     }
 
     /// モンスターがタップされたときに ARSceneController から呼ばれる。離れていても、バトルを始める
-    func monsterTapped(id: WildMonster.ID) {
+    /// position はタップしたときにモンスターがいた場所（AR のワールド座標、足元）
+    func monsterTapped(id: WildMonster.ID, position: SIMD3<Float>) {
         guard let target = wildMonster, target.id == id else { return }
         escapeTask?.cancel()
         escapeTask = nil
         wildMonster = nil
         battleMonster = target
+        battleMonsterPosition = position
     }
 
     /// バトルが終わったときに呼ぶ。勝ったら捕獲成功、負けたら捕獲失敗を出す
@@ -119,6 +124,7 @@ final class ARCaptureViewModel {
     func finishBattle(won: Bool) {
         guard let opponent = battleMonster?.monster else { return }
         battleMonster = nil
+        battleMonsterPosition = nil
         captureOutcome = won ? .success(opponent) : .failure(opponent)
         if won {
             collection.add(opponent)
@@ -139,6 +145,7 @@ final class ARCaptureViewModel {
     func fleeBattle() {
         guard let wild = battleMonster else { return }
         battleMonster = nil
+        battleMonsterPosition = nil
         showNotice("\(wild.monster.name)は逃げてしまった…")
     }
 

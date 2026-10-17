@@ -30,6 +30,10 @@ struct ARCaptureView: View {
     /// 今出している AR の画面。nil は切り替え中（前の画面を外して、arSwitchDelay だけ待っている間）
     /// ViewModel の battleMonster が変わったら、ここを切り替える。ARView を置くかどうかはこれだけで決める
     @State private var arScreen: ARScreen? = .capture
+    /// 捕獲の ARView とバトルの ARView で同じものを使う AR セッション
+    /// 位置の基準と見つけた床が残るので、バトルでは床を探し直さず、相手を野生のモンスターがいた場所にそのまま置ける
+    /// バトルから戻ったときも、捕獲の ARView は床をすぐに見つけ直せる
+    @State private var arSession = ARSession()
 
     init(locationViewModel: LocationViewModel, collection: any MonsterCollection) {
         self.locationViewModel = locationViewModel
@@ -43,7 +47,7 @@ struct ARCaptureView: View {
                 Color.black
                 if isVisible && arScreen == .capture {
                     // 外すと ARViewContainer の dismantleUIView が呼ばれ、セッションが止まる
-                    ARViewContainer(viewModel: viewModel)
+                    ARViewContainer(viewModel: viewModel, session: arSession)
                 }
             }
             .ignoresSafeArea()
@@ -73,11 +77,12 @@ struct ARCaptureView: View {
             // バトルも fullScreenCover で開かず、重ねる（理由は下の詳細画面と同じ）
             // 捕獲の ARView を外し終わってから出す。バトルが終わったら battleMonster が nil になり、すぐに外れる
             .overlay {
-                if case .battle = arScreen, let wild = viewModel.battleMonster {
+                if case .battle = arScreen, let wild = viewModel.battleMonster, let position = viewModel.battleMonsterPosition {
                     BattleView(
                         service: CPUBattleService(opponent: wild.monster),
                         wildBattle: BattleView.WildBattle(
                             monster: wild.monster,
+                            arHandoff: ARHandoff(session: arSession, opponentPosition: position),
                             onFinish: { viewModel.finishBattle(won: $0 == .won) },
                             onFlee: { viewModel.fleeBattle() }
                         )
@@ -112,7 +117,12 @@ struct ARCaptureView: View {
                 arScreen = next
             }
             .onAppear { isVisible = true }
-            .onDisappear { isVisible = false }
+            .onDisappear {
+                isVisible = false
+                // ARView を外してもセッションは止まらない（ARViewContainer を参照）ので、ここでカメラを止める
+                // 戻ってきたら、ARViewContainer がもう一度開始する
+                arSession.pause()
+            }
         } else {
             ContentUnavailableView(
                 "ARに対応していません",
