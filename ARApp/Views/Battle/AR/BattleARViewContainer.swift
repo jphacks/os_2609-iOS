@@ -10,6 +10,8 @@ import ARKit
 /// バトル画面の ARView を SwiftUI で使うためのラッパー
 /// 担当：SwiftUI との橋渡しと、AR セッションの開始・停止（捕獲画面の ARViewContainer と同じ）
 struct BattleARViewContainer: UIViewRepresentable {
+    /// ARView を作るときの大きさ。表示する場所の大きさを渡す
+    let initialSize: CGSize
     let myMonster: Monster
     let opponentMonster: Monster
     /// 立っている間にくり返すアニメーション（HP が少ないと弱った動きになる）
@@ -28,7 +30,10 @@ struct BattleARViewContainer: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> ARView {
-        let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
+        // 大きさ 0 で作ると、SwiftUI が大きさを決める前に描き始めたときに描く場所を用意できず、
+        // そのまま真っ黒になることがある（HP などの後ろに置いているので、大きさが決まるのが遅れやすい）
+        // 最初から表示する場所の大きさで作る
+        let arView = ARView(frame: CGRect(origin: .zero, size: initialSize), cameraMode: .ar, automaticallyConfigureSession: false)
 
         // 床にモンスターを置くため、水平面の検出を有効にする
         let configuration = ARWorldTrackingConfiguration()

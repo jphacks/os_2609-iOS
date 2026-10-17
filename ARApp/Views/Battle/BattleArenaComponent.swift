@@ -34,17 +34,23 @@ struct BattleArenaComponent: View {
                     .padding()
             } else if isVisible {
                 // 外すと BattleARViewContainer の dismantleUIView が呼ばれ、セッションが止まる
-                BattleARViewContainer(
-                    myMonster: myMonster,
-                    opponentMonster: opponentMonster,
-                    myIdle: myIdle,
-                    opponentIdle: opponentIdle,
-                    myAnimation: myAnimation,
-                    opponentAnimation: opponentAnimation,
-                    hitOnOpponent: hitOnOpponent,
-                    hitOnMe: hitOnMe,
-                    onPlaced: { isPlaced = true }
-                )
+                // ARView は最初から表示する場所の大きさで作る必要があるので、大きさが決まってから置く
+                GeometryReader { proxy in
+                    if proxy.size.width > 0, proxy.size.height > 0 {
+                        BattleARViewContainer(
+                            initialSize: proxy.size,
+                            myMonster: myMonster,
+                            opponentMonster: opponentMonster,
+                            myIdle: myIdle,
+                            opponentIdle: opponentIdle,
+                            myAnimation: myAnimation,
+                            opponentAnimation: opponentAnimation,
+                            hitOnOpponent: hitOnOpponent,
+                            hitOnMe: hitOnMe,
+                            onPlaced: { isPlaced = true }
+                        )
+                    }
+                }
                 if !isPlaced {
                     Text("床を映すと、モンスターが現れます")
                         .font(.headline)
