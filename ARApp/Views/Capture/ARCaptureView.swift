@@ -26,12 +26,14 @@ struct ARCaptureView: View {
             }
             .ignoresSafeArea()
             .overlay(alignment: .top) {
-                Text(viewModel.statusMessage)
-                    .font(.headline)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.top, 8)
+                if let statusMessage = viewModel.statusMessage {
+                    Text(statusMessage)
+                        .font(.headline)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.top, 8)
+                }
             }
             .overlay(alignment: .bottom) {
                 LocationStatusComponent(viewModel: locationViewModel)
