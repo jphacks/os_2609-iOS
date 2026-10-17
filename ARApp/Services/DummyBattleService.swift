@@ -2,12 +2,16 @@
 //  DummyBattleService.swift
 //  ARApp
 //
+//  ⚠️⚠️⚠️ 開発用のコード ⚠️⚠️⚠️
+//  Supabase がないとき（接続先の plist がない・プレビュー）に、本物の対戦相手の代わりに使う。
+//  本番では使わないが、プレビューと鍵を持っていないメンバーの環境で対戦画面が動かなくなるので削除しない。
+//  使っている場所：ContentView の makeBattleService()（plist がないとき）と、BattleView の #Preview
+//
 
 import Foundation
 
-/// ⚠️ 開発用：Supabase がなくても対戦を試せるダミー実装
+/// 【開発用】Supabase がなくても対戦を試せるダミー実装
 /// すぐに相手が見つかり、相手（CPU）は一定の間隔で通常攻撃してくる
-/// 削除するときは、ContentView の makeBattleService と BattleView の #Preview でこのクラスを使っている箇所も消す
 final class DummyBattleService: BattleService {
     /// CPU が攻撃する間隔（秒）
     private static let attackInterval: Double = 1

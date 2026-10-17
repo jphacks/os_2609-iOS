@@ -2,10 +2,15 @@
 //  FighterImageComponent.swift
 //  ARApp
 //
+//  ⚠️⚠️⚠️ 仮の見た目 ⚠️⚠️⚠️
+//  モンスターの絵や 3D モデルをバトル画面に出せるようになったら、この部品ごと置き換える。
+//  使っている場所：BattleView（自分と相手）と BattleLobbyComponent（自分）
+//  どちらのモンスターでも同じアイコン（自分は盾、相手は炎）になっている
+//
 
 import SwiftUI
 
-/// モンスターの仮表示（SF Symbols）。3D モデルは AR 画面でだけ使う
+/// 【仮】モンスターの代わりに出す SF Symbols のアイコン
 struct FighterImageComponent: View {
     let systemName: String
     let color: Color

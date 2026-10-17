@@ -7,7 +7,7 @@
 typealias FighterID = String
 
 /// バトルで戦う 1 人ぶんの状態。自分も相手も同じ形で持つ
-struct Fighter: Equatable {
+struct Fighter {
     static let specialGaugeMax = 100
 
     let id: FighterID

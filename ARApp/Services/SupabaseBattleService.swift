@@ -268,6 +268,7 @@ final class SupabaseBattleService: BattleService {
             do {
                 try await channel.subscribeWithError()
             } catch {
+                // 【開発用】原因を調べるためのログ。リリースするときに消してよい
                 print("Realtime に接続できませんでした。データベースの定期確認だけで続けます: \(error)")
                 return
             }
@@ -305,7 +306,9 @@ final class SupabaseBattleService: BattleService {
         }
     }
 
+    /// やめた対戦の通信が遅れて届くことがあるので、参加中の対戦のものだけ受け取る
     private func receive(_ row: BattleRow) {
+        guard row.id == battleID else { return }
         if row.player1ID == playerID, let name = row.player2Monster {
             opponentPlayerID = row.player2ID
             opponentMonsterName = name
@@ -320,7 +323,8 @@ final class SupabaseBattleService: BattleService {
     }
 
     private func receive(_ row: ActionRow) {
-        guard row.playerID != playerID, row.seq > lastDeliveredSeq, pendingActions[row.seq] == nil else { return }
+        guard row.battleID == battleID, row.playerID != playerID,
+              row.seq > lastDeliveredSeq, pendingActions[row.seq] == nil else { return }
         // 知らない行動を飛ばして先へ進むと、相手の端末と HP が食い違うので、対戦を続けない
         guard let action = BattleAction(rawValue: row.action) else {
             endActions(throwing: ServiceError.invalidData)
@@ -343,9 +347,10 @@ final class SupabaseBattleService: BattleService {
     /// 対戦が終わったら、残っている相手の行動を流してから終える
     /// 相手は行動を送り終えてから決着を記録するが、Realtime で取りこぼしていた場合に備えて、もう一度だけデータベースを見る
     private func endAfterLastActions() async {
-        if let battleID {
-            try? await fetchOpponentActions(battleID: battleID)
-        }
+        guard let endingBattleID = battleID else { return }
+        try? await fetchOpponentActions(battleID: endingBattleID)
+        // 確認している間に対戦をやめて次の対戦が始まっていたら、新しい対戦を終わらせない
+        guard battleID == endingBattleID else { return }
         if winnerID == nil {
             endActions(throwing: ServiceError.opponentLeft)
         } else {

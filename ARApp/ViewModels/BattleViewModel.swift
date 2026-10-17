@@ -40,7 +40,8 @@ final class BattleViewModel {
     private static let myID: FighterID = "me"
     private static let opponentID: FighterID = "opponent"
 
-    /// 次の対戦で使う自分のモンスター（今はランダム。あとで捕まえたモンスターから選べるようにする）
+    /// 次の対戦で使う自分のモンスター
+    /// 【仮】今はランダム。捕まえたモンスターから選べるようにしたら、ここと leaveBattle() の選び直しを置き換える
     private(set) var myMonster = Monster.all.randomElement()!
     private(set) var phase = Phase.lobby
     /// 対戦中の状態。マッチングするまでは nil
@@ -198,6 +199,7 @@ final class BattleViewModel {
 
     /// 相手が見つからない・相手がいなくなった・通信に失敗したときは、対戦をやめてロビーに戻る
     private func fail(_ error: Error) {
+        // 【開発用】原因を調べるためのログ。リリースするときに消してよい
         print("対戦の通信に失敗しました: \(error)")
         leaveBattle()
         errorMessage = "対戦できませんでした。もう一度お試しください"
