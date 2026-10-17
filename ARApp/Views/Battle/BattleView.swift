@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// 対戦画面。同じ地点にいる相手とマッチングし、毎ターン同時にタイミング攻撃をし合う
-/// 部品は同じフォルダの別ファイルにある（MonsterCardView、TimingGaugeView など）
+/// 部品は同じフォルダの別ファイルにある（MonsterCardComponent、TimingGaugeComponent など）
 struct BattleView: View {
     let locationViewModel: LocationViewModel
     @State private var viewModel: BattleViewModel
@@ -24,7 +24,7 @@ struct BattleView: View {
             if let battle = viewModel.battle {
                 battleScreen(battle)
             } else {
-                BattleLobbyView(
+                BattleLobbyComponent(
                     myMonster: viewModel.myMonster,
                     location: locationViewModel.currentLocation,
                     isSearching: viewModel.phase == .searching || viewModel.phase == .cancellingSearch,
@@ -57,7 +57,7 @@ struct BattleView: View {
                     .foregroundStyle(.secondary)
             }
 
-            MonsterCardView(
+            MonsterCardComponent(
                 name: battle.opponent.monster.name,
                 trait: battle.opponent.profile.trait,
                 isDefeated: battle.opponent.hp == 0
@@ -65,19 +65,19 @@ struct BattleView: View {
             .overlay {
                 if let event = viewModel.lastEvent,
                    case .hit(let judgement, let damage, _) = event.kind, damage > 0 {
-                    FloatingDamageView(text: "-\(damage)", color: judgement.color)
+                    FloatingDamageComponent(text: "-\(damage)", color: judgement.color)
                         .id(event.id)
                 }
             }
             .shake(trigger: opponentShakeCount)
 
-            HPBarView(
+            HPBarComponent(
                 title: "相手（\(battle.opponent.monster.name)）",
                 hp: battle.opponent.hp,
                 maxHP: battle.opponent.profile.maxHP,
                 color: .red
             )
-            HPBarView(
+            HPBarComponent(
                 title: "自分（\(battle.me.monster.name)）",
                 hp: battle.me.hp,
                 maxHP: battle.me.profile.maxHP,
@@ -86,13 +86,13 @@ struct BattleView: View {
             .shake(trigger: playerShakeCount)
 
             if viewModel.phase == .finished, let outcome = battle.outcome {
-                BattleResultView(outcome: outcome, opponentName: battle.opponent.monster.name) {
+                BattleResultComponent(outcome: outcome, opponentName: battle.opponent.monster.name) {
                     viewModel.leaveBattle()
                 }
             } else {
                 // 止まっている間は再描画しない。位置は描画する時刻から毎回計算する
                 TimelineView(.animation(paused: viewModel.phase != .attacking)) { context in
-                    TimingGaugeView(
+                    TimingGaugeComponent(
                         position: viewModel.cursorPosition(at: context.date),
                         zones: viewModel.gauge.zones,
                         results: viewModel.zoneResults
@@ -100,7 +100,7 @@ struct BattleView: View {
                 }
                 .frame(height: 70)
 
-                BattleMessageView(
+                BattleMessageComponent(
                     event: viewModel.lastEvent,
                     isWaitingForOpponent: viewModel.phase == .waitingForOpponent
                 )
@@ -116,10 +116,10 @@ struct BattleView: View {
         switch viewModel.phase {
         case .choosingAction:
             HStack(spacing: 8) {
-                ActionButtonView(title: "攻撃", detail: "ふつう", tint: .blue) {
+                ActionButtonComponent(title: "攻撃", detail: "ふつう", tint: .blue) {
                     viewModel.startAttack(.normal)
                 }
-                ActionButtonView(title: "強攻撃", detail: "ダメージ×2・狭い", tint: .orange) {
+                ActionButtonComponent(title: "強攻撃", detail: "ダメージ×2・狭い", tint: .orange) {
                     viewModel.startAttack(.strong)
                 }
             }
@@ -141,7 +141,7 @@ struct BattleView: View {
     }
 }
 
-private struct ActionButtonView: View {
+private struct ActionButtonComponent: View {
     let title: String
     let detail: String
     let tint: Color

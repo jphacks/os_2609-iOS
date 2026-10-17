@@ -1,12 +1,12 @@
 //
-//  BattleLobbyView.swift
+//  BattleLobbyComponent.swift
 //  ARApp
 //
 
 import SwiftUI
 
 /// 対戦相手を探す前の画面。今いる地点と、自分のモンスターを見せる
-struct BattleLobbyView: View {
+struct BattleLobbyComponent: View {
     let myMonster: Monster
     /// 推定した現在地。わからない間は相手を探せない
     let location: Location?
@@ -22,7 +22,7 @@ struct BattleLobbyView: View {
             Text("MONSTER BATTLE")
                 .font(.headline)
 
-            MonsterCardView(name: myMonster.name, trait: BattleProfile.of(myMonster).trait, isDefeated: false)
+            MonsterCardComponent(name: myMonster.name, trait: BattleProfile.of(myMonster).trait, isDefeated: false)
 
             Text("同じ場所にいる人と対戦できます")
                 .font(.subheadline)
@@ -65,7 +65,7 @@ struct BattleLobbyView: View {
 }
 
 #Preview {
-    BattleLobbyView(
+    BattleLobbyComponent(
         myMonster: Monster.all[0],
         location: Location.registered[0],
         isSearching: false,

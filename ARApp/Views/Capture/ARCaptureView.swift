@@ -34,7 +34,7 @@ struct ARCaptureView: View {
                     .padding(.top, 8)
             }
             .overlay(alignment: .bottom) {
-                LocationStatusView(viewModel: locationViewModel)
+                LocationStatusComponent(viewModel: locationViewModel)
                     .padding(.bottom, 8)
             }
             .onAppear { isVisible = true }

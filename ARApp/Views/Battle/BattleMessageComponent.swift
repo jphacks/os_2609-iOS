@@ -1,12 +1,12 @@
 //
-//  BattleMessageView.swift
+//  BattleMessageComponent.swift
 //  ARApp
 //
 
 import SwiftUI
 
 /// 直前の出来事を文字で伝える
-struct BattleMessageView: View {
+struct BattleMessageComponent: View {
     let event: BattleViewModel.Event?
     let isWaitingForOpponent: Bool
 
@@ -54,5 +54,5 @@ struct BattleMessageView: View {
 }
 
 #Preview {
-    BattleMessageView(event: nil, isWaitingForOpponent: false)
+    BattleMessageComponent(event: nil, isWaitingForOpponent: false)
 }

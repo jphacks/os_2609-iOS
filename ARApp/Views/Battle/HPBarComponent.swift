@@ -1,11 +1,11 @@
 //
-//  HPBarView.swift
+//  HPBarComponent.swift
 //  ARApp
 //
 
 import SwiftUI
 
-struct HPBarView: View {
+struct HPBarComponent: View {
     let title: String
     let hp: Int
     let maxHP: Int
@@ -36,6 +36,6 @@ struct HPBarView: View {
 }
 
 #Preview {
-    HPBarView(title: "自分（ネコ）", hp: 420, maxHP: 600, color: .green)
+    HPBarComponent(title: "自分（ネコ）", hp: 420, maxHP: 600, color: .green)
         .padding()
 }

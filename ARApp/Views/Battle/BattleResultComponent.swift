@@ -1,12 +1,12 @@
 //
-//  BattleResultView.swift
+//  BattleResultComponent.swift
 //  ARApp
 //
 
 import SwiftUI
 
 /// 対戦の結果
-struct BattleResultView: View {
+struct BattleResultComponent: View {
     let outcome: BattleOutcome
     let opponentName: String
     let onRestart: () -> Void
@@ -52,5 +52,5 @@ struct BattleResultView: View {
 }
 
 #Preview {
-    BattleResultView(outcome: .won, opponentName: "ライオン") {}
+    BattleResultComponent(outcome: .won, opponentName: "ライオン") {}
 }

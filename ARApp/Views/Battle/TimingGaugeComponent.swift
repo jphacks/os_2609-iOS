@@ -1,12 +1,12 @@
 //
-//  TimingGaugeView.swift
+//  TimingGaugeComponent.swift
 //  ARApp
 //
 
 import SwiftUI
 
 /// 横一直線のゲージ、判定エリア、カーソル。位置はすべて 0 が左端、1 が右端
-struct TimingGaugeView: View {
+struct TimingGaugeComponent: View {
     let position: Double
     let zones: [TimingZone]
     /// エリアごとの判定。当てたエリアは結果の色になる
@@ -58,7 +58,7 @@ struct TimingGaugeView: View {
 }
 
 #Preview {
-    TimingGaugeView(
+    TimingGaugeComponent(
         position: 0.4,
         zones: [TimingZone(center: 0.3, width: 0.2), TimingZone(center: 0.7, width: 0.2)],
         results: [.perfect, nil]

@@ -1,12 +1,12 @@
 //
-//  MonsterCardView.swift
+//  MonsterCardComponent.swift
 //  ARApp
 //
 
 import SwiftUI
 
 /// モンスターの見た目（3D モデルは AR 画面でだけ使うので、ここでは仮のアイコン）
-struct MonsterCardView: View {
+struct MonsterCardComponent: View {
     let name: String
     let trait: String
     let isDefeated: Bool
@@ -36,7 +36,7 @@ struct MonsterCardView: View {
 }
 
 /// モンスターの上に浮かんで消えるダメージの数字
-struct FloatingDamageView: View {
+struct FloatingDamageComponent: View {
     let text: String
     let color: Color
 
@@ -59,7 +59,7 @@ struct FloatingDamageView: View {
 }
 
 #Preview {
-    MonsterCardView(name: "ライオン", trait: "連撃が多いが打たれ弱い", isDefeated: false)
-        .overlay { FloatingDamageView(text: "-100", color: .orange) }
+    MonsterCardComponent(name: "ライオン", trait: "連撃が多いが打たれ弱い", isDefeated: false)
+        .overlay { FloatingDamageComponent(text: "-100", color: .orange) }
         .padding()
 }
