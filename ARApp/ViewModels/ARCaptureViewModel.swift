@@ -7,41 +7,36 @@ import Foundation
 import Observation
 
 /// AR 捕獲画面の状態。ARView には触らず、状態だけを持つ
-/// どのモンスターを AR に出すかはここで決め、3D での配置や動きは ARSceneController が担当する
+/// 歩いた距離に応じてモンスターを出し、3D での配置や動きは ARSceneController が担当する
+/// モンスターはこの端末の中だけに出る（ほかのプレイヤーとは共有しない）
 @Observable
 final class ARCaptureViewModel {
     /// 「捕まえた！」などのお知らせを表示しておく時間
     static let noticeDuration: Duration = .seconds(2)
     /// 捕まえられる距離（m）。床の上での、自分とモンスターの距離がこれより遠いと捕まえられない
     static let captureDistance: Float = 1.0
+    /// モンスターが出るまでに歩く距離（m）。出るたびにこの範囲から選び直す
+    static let spawnWalkDistanceRange: ClosedRange<Float> = 5...10
+    /// 出現してから逃げるまでの時間
+    static let escapeDuration: Duration = .seconds(60)
 
     /// モンスターを置く床が見つかったか
     private(set) var isFloorFound = false
     /// 「捕まえた！」などのお知らせ。表示し終わったら nil に戻る
     private(set) var notice: String?
-    /// もう AR に置いたモンスター
-    /// 現在地の推定がぶれて別の地点になっても、捕まえるか逃げるまでは出しておくために覚えておく
-    private var placedIDs: Set<WildMonster.ID> = []
-    /// 捕獲を問い合わせ中のモンスター。返事を待つ間に何度タップされても、1 回だけ問い合わせる
-    private var capturingIDs: Set<WildMonster.ID> = []
-
-    private let wildMonsterViewModel: WildMonsterViewModel
-    private let locationViewModel: LocationViewModel
+    /// 出現しているモンスター。一度に出るのは 1 体まで
+    private(set) var wildMonster: WildMonster?
+    /// 次のモンスターが出るまでに、あと何 m 歩くか
+    /// 歩くたびに変わるが、画面には出さないので View の更新のきっかけにしない
+    @ObservationIgnored private var remainingWalkDistance = Float.random(in: spawnWalkDistanceRange)
     private var noticeTask: Task<Void, Never>?
+    private var escapeTask: Task<Void, Never>?
 
-    init(wildMonsterViewModel: WildMonsterViewModel, locationViewModel: LocationViewModel) {
-        self.wildMonsterViewModel = wildMonsterViewModel
-        self.locationViewModel = locationViewModel
-    }
-
-    /// AR に出すモンスター。今いる地点にいるモンスターと、もう置いたモンスター
-    /// ARSceneController はこの一覧に合わせて 3D のモンスターを置いたり消したりする
+    /// AR に出すモンスター。ARSceneController はこの一覧に合わせて 3D のモンスターを置いたり消したりする
+    /// 床が見つかっていない間は出さない（床が見つかり直したら、その近くに出し直す）
     var shownMonsters: [WildMonster] {
-        guard isFloorFound else { return [] }
-        let locationID = locationViewModel.currentLocation?.id
-        return wildMonsterViewModel.wildMonsters.filter {
-            $0.locationID == locationID || placedIDs.contains($0.id)
-        }
+        guard isFloorFound, let wildMonster else { return [] }
+        return [wildMonster]
     }
 
     var statusMessage: String {
@@ -49,8 +44,8 @@ final class ARCaptureViewModel {
             notice
         } else if !isFloorFound {
             "床を映して、ゆっくり動かしてください"
-        } else if shownMonsters.isEmpty {
-            "この辺りにはモンスターがいないようだ"
+        } else if wildMonster == nil {
+            "歩き回ってモンスターを探そう"
         } else {
             "モンスターに近づいて、タップで捕まえよう"
         }
@@ -60,44 +55,44 @@ final class ARCaptureViewModel {
     func floorStateChanged(isFound: Bool) {
         isFloorFound = isFound
         if !isFound {
-            // 床がなくなると置いたモンスターも消えるので、次に床が見つかったときに出し直す
-            placedIDs.removeAll()
             noticeTask?.cancel()
             noticeTask = nil
             notice = nil
         }
     }
 
-    /// モンスターを床に置き終わったときに ARSceneController から呼ばれる
-    func monsterPlaced(id: WildMonster.ID) {
-        placedIDs.insert(id)
+    /// 自分が床の上を歩いたときに ARSceneController から呼ばれる。distance は歩いた距離（m）
+    /// 決まった距離を歩くと、モンスターが出る。出ている間は数えない
+    func walked(distance: Float) {
+        guard isFloorFound, wildMonster == nil else { return }
+        remainingWalkDistance -= distance
+        guard remainingWalkDistance <= 0 else { return }
+
+        remainingWalkDistance = .random(in: Self.spawnWalkDistanceRange)
+        // `Monster.all` は空ではない
+        let wild = WildMonster(monster: Monster.all.randomElement()!)
+        wildMonster = wild
+        showNotice("\(wild.monster.name)が現れた！")
+        escapeTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.escapeDuration)
+            guard let self, !Task.isCancelled, self.wildMonster?.id == wild.id else { return }
+            self.wildMonster = nil
+            self.showNotice("\(wild.monster.name)は逃げてしまった…")
+        }
     }
 
     /// モンスターがタップされたときに ARSceneController から呼ばれる
     /// distance は床の上での、自分とモンスターの距離（m）
     func monsterTapped(id: WildMonster.ID, distance: Float) {
-        guard let target = shownMonsters.first(where: { $0.id == id }),
-              !capturingIDs.contains(id) else { return }
+        guard let target = wildMonster, target.id == id else { return }
         guard distance <= Self.captureDistance else {
             showNotice("遠すぎる！もっと近づこう")
             return
         }
-
-        // 捕獲は早い者勝ちなので、捕まえられたかは Service に問い合わせて決める
-        capturingIDs.insert(id)
-        Task {
-            defer { capturingIDs.remove(id) }
-            do {
-                if try await wildMonsterViewModel.capture(id: id) {
-                    showNotice("\(target.monster.name)を捕まえた！")
-                } else {
-                    showNotice("ほかの人に先を越された…")
-                }
-                placedIDs.remove(id)
-            } catch {
-                showNotice("通信に失敗しました。もう一度タップしてください")
-            }
-        }
+        escapeTask?.cancel()
+        escapeTask = nil
+        wildMonster = nil
+        showNotice("\(target.monster.name)を捕まえた！")
     }
 
     private func showNotice(_ message: String) {

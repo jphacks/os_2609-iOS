@@ -8,12 +8,16 @@ import UIKit
 import Combine
 
 /// ARView のシーンを操作する
-/// 担当：アンカーやエンティティの配置、モンスターを歩かせること、タップなどシーンのイベントを ViewModel に伝えること
+/// 担当：アンカーやエンティティの配置、モンスターを歩かせること、歩いた距離やタップなどシーンのイベントを ViewModel に伝えること
 /// タップを受け取る `#selector` を使うため、NSObject を継承している
 final class ARSceneController: NSObject {
-    /// モンスターが出現する、床のアンカーからの距離（m）
-    /// アンカーは最初に見つかった床（自分の近く）なので、少し歩かないと届かない距離にする
-    static let spawnDistanceRange: ClosedRange<Float> = 1.5...4
+    /// モンスターが出現する、自分からの距離（m）。少し歩かないと届かない距離にする
+    static let spawnDistanceRange: ClosedRange<Float> = 1.5...3
+    /// モンスターが出現する方向の、カメラの正面からのずれの最大（ラジアン）。出たことに気づけるよう、前の方に出す
+    static let spawnAngleRange: Float = .pi / 4
+    /// これだけ動いたら歩いたとみなす距離（m）
+    /// その場で端末を動かしただけのぶれや、位置の追跡の小さな揺れを、歩いた距離に数えないようにする
+    static let walkStep: Float = 0.3
     /// 出現した場所を中心に歩き回る範囲の半径（m）
     static let wanderRadius: Float = 1.5
     /// 1 回に歩く距離（m）
@@ -34,6 +38,10 @@ final class ARSceneController: NSObject {
     private var floorAnchor: AnchorEntity?
     /// アンカーの配置状態の購読。保持していないとすぐに解除される
     private var anchoredSubscription: Cancellable?
+    /// 毎フレームの更新の購読。歩いた距離を測るのに使う
+    private var updateSubscription: Cancellable?
+    /// 最後に歩いたとみなした、床の上での自分の位置（ワールド座標の x, z）
+    private var lastWalkPoint: SIMD2<Float>?
     /// 床に置いたモンスター。キーは WildMonster.id
     private var entities: [WildMonster.ID: Entity] = [:]
     /// モンスターごとの、モデルの読み込みから歩き回るまでのタスク
@@ -61,6 +69,10 @@ final class ARSceneController: NSObject {
         arView.scene.addAnchor(anchor)
         floorAnchor = anchor
 
+        updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
+            self?.measureWalk()
+        }
+
         arView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap)))
     }
 
@@ -84,6 +96,9 @@ final class ARSceneController: NSObject {
         entities.removeAll()
         anchoredSubscription?.cancel()
         anchoredSubscription = nil
+        updateSubscription?.cancel()
+        updateSubscription = nil
+        lastWalkPoint = nil
         floorAnchor = nil
         // ARView ごとアンカーがなくなるので、次に表示したときは床を探すところからやり直す
         viewModel.floorStateChanged(isFound: false)
@@ -93,17 +108,16 @@ final class ARSceneController: NSObject {
         tasks[wild.id] = Task { [weak self] in
             // モデルの読み込みは時間がかかるので、読み込み終わってから床に置く
             let entity = await MonsterEntity.make(from: wild.monster)
-            guard let self, let floorAnchor = self.floorAnchor, !Task.isCancelled else { return }
+            guard let self, let floorAnchor = self.floorAnchor, let arView = self.arView, !Task.isCancelled else { return }
 
             // ARView.entity(at:) でタップを拾えるのは、当たり判定（CollisionComponent）を持つエンティティだけ
             entity.generateCollisionShapes(recursive: true)
             // y は MonsterEntity が決めた高さのまま（モデルは足元が原点なので 0）
-            let home = Self.randomSpawnPoint()
+            let home = Self.randomSpawnPoint(around: arView.cameraTransform, on: floorAnchor)
             entity.position = [home.x, entity.position.y, home.y]
             entity.orientation = simd_quatf(angle: .random(in: 0..<(2 * .pi)), axis: [0, 1, 0])
             floorAnchor.addChild(entity)
             self.entities[wild.id] = entity
-            self.viewModel.monsterPlaced(id: wild.id)
 
             await self.walkAround(entity, home: home, speed: Self.walkSpeedPerHeight * wild.monster.size)
         }
@@ -155,6 +169,22 @@ final class ARSceneController: NSObject {
         }
     }
 
+    /// 床の上で自分が walkStep 以上動いたら、その距離を ViewModel に伝える
+    /// 高さは無視する（しゃがんだり端末を上下に動かしたりしても、歩いたことにしない）
+    private func measureWalk() {
+        guard let arView else { return }
+        let camera = arView.cameraTransform.translation
+        let point = SIMD2(camera.x, camera.z)
+        guard let lastWalkPoint else {
+            lastWalkPoint = point
+            return
+        }
+        let distance = simd_distance(point, lastWalkPoint)
+        guard distance >= Self.walkStep else { return }
+        self.lastWalkPoint = point
+        viewModel.walked(distance: distance)
+    }
+
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         guard let arView else { return }
         // 当たるのはモデルの中の部品なので、親をたどって床に置いたモンスターを探す
@@ -172,11 +202,16 @@ final class ARSceneController: NSObject {
         }
     }
 
-    /// モンスターが出現するランダムな点（床のアンカーから見た x, z）
-    private static func randomSpawnPoint() -> SIMD2<Float> {
+    /// モンスターが出現するランダムな点（床のアンカーから見た x, z）。自分の前の方の、少し離れた場所にする
+    /// 床のアンカーは最初に床が見つかった場所にあるので、歩いたあとは自分の位置から求める必要がある
+    private static func randomSpawnPoint(around camera: Transform, on anchor: Entity) -> SIMD2<Float> {
+        let position = anchor.convert(position: camera.translation, from: nil)
+        // カメラは -Z 方向を向いている
+        let forward = anchor.convert(direction: camera.rotation.act([0, 0, -1]), from: nil)
+        let facing = atan2(forward.z, forward.x)
+        let angle = facing + .random(in: -spawnAngleRange...spawnAngleRange)
         let distance = Float.random(in: spawnDistanceRange)
-        let angle = Float.random(in: 0..<(2 * .pi))
-        return [distance * cos(angle), distance * sin(angle)]
+        return [position.x + distance * cos(angle), position.z + distance * sin(angle)]
     }
 
     /// 今いる場所から少し離れた、次に歩いていく点
