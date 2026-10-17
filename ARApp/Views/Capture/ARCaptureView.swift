@@ -59,13 +59,6 @@ struct ARCaptureView: View {
                     .background(.ultraThinMaterial, in: Capsule())
                     .padding(.top, 8)
             }
-            .overlay {
-                if let outcome = viewModel.captureOutcome {
-                    CaptureResultComponent(outcome: outcome)
-                        .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .animation(.spring, value: viewModel.captureOutcome != nil)
             // モンスターが現れたら振動させ、画面を見ていなくても気づけるようにする
             .sensoryFeedback(.warning, trigger: viewModel.wildMonster?.id) { (_: UUID?, id: UUID?) -> Bool in
                 id != nil
@@ -106,7 +99,7 @@ struct ARCaptureView: View {
             .toolbarVisibility(isTabBarShown ? .automatic : .hidden, for: .tabBar)
             // バトルが始まったら捕獲の ARView を外し、少し待ってからバトルを出す
             // バトルが終わったら（バトルはすぐに外れる）、少し待ってから捕獲の ARView を作り直す
-            // 作り直すと床は探し直しになるが、捕獲の結果や詳細画面を出している間に見つかる
+            // AR セッションは引き継ぐので、作り直しても床はすぐに見つかる。勝ったときは、作り直す間も詳細画面を重ねて出している
             .task(id: viewModel.battleMonster?.id) {
                 let next: ARScreen = viewModel.battleMonster.map { .battle($0.id) } ?? .capture
                 // 別のタブから戻ってきたときなど、もう出している

@@ -17,7 +17,7 @@ struct BattleView: View {
         let monster: Monster
         /// 捕獲画面から引き継ぐ AR。対戦中は、捕獲画面と同じ AR セッションで、野生のモンスターがいた場所に相手を置く
         let arHandoff: ARHandoff
-        /// 決着して、勝ち負けの演出を見せ終わったときに呼ぶ。勝敗の結果の画面は出さない（捕獲画面が捕獲の結果を出す）
+        /// 決着して、勝ち負けの演出を見せ終わったときに呼ぶ。勝敗の結果の画面は出さない（勝てば捕獲画面が詳細画面を出し、負ければ「捕獲失敗…」を見せ終わってから呼ぶ）
         let onFinish: (BattleViewModel.Outcome) -> Void
         /// 対戦前に「にげる」が押されたときに呼ぶ
         let onFlee: () -> Void

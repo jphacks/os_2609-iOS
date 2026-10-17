@@ -55,6 +55,8 @@ struct BattleFightComponent: View {
     /// 確定してから結果を出すまでの時間（秒）。勝ったときは「VICTORY!」を見せ、負けたときは倒れるところを見せる
     private static let victoryDuration = 2.2
     private static let defeatDuration = 1.2
+    /// 野生のモンスターとのバトルで負けたときに、「捕獲失敗…」を見せる時間（秒）。見せ終わったら捕獲画面に戻る
+    private static let captureFailedDuration = 3.5
     /// この距離（pt）より指を動かしたら、タップではなくスワイプ（よける）にする
     private static let swipeDistance: CGFloat = 30
 
@@ -75,7 +77,7 @@ struct BattleFightComponent: View {
             // 決着が確定したら、少し待ってから結果を出す
             .task(id: viewModel.outcome) {
                 guard let outcome = viewModel.outcome else { return }
-                try? await Task.sleep(for: .seconds(outcome == .won ? Self.victoryDuration : Self.defeatDuration))
+                try? await Task.sleep(for: .seconds(resultDelay(of: outcome)))
                 guard !Task.isCancelled else { return }
                 if let onFinish {
                     onFinish(outcome)
@@ -323,8 +325,20 @@ struct BattleFightComponent: View {
                 } else if outcome == .won {
                     VictoryComponent()
                         .transition(.opacity)
+                } else if onFinish != nil {
+                    // 野生のモンスターとのバトルでは、負けたら逃げられる。勝敗の結果の画面の代わりに出す
+                    CaptureFailedComponent(monsterName: opponent.name)
+                        .transition(.opacity)
                 }
             }
+        }
+    }
+
+    /// 決着が確定してから、結果を出す（野生のモンスターとのバトルでは捕獲画面に戻る）までの時間（秒）
+    private func resultDelay(of outcome: BattleViewModel.Outcome) -> Double {
+        switch outcome {
+        case .won: Self.victoryDuration
+        case .lost: onFinish == nil ? Self.defeatDuration : Self.captureFailedDuration
         }
     }
 
