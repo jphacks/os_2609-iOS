@@ -37,7 +37,10 @@ alter publication supabase_realtime add table battles, battle_moves;
 alter table battles enable row level security;
 alter table battle_moves enable row level security;
 create policy "誰でも対戦を読める" on battles for select using (true);
-create policy "誰でも対戦を終われる" on battles for update using (true);
+-- 対戦の書き換えは、status を 'finished' にすることだけ許可する（プレイヤーやモンスターは書き換えさせない）
+revoke update on battles from anon, authenticated;
+grant update (status) on battles to anon;
+create policy "誰でも対戦を終われる" on battles for update using (true) with check (status = 'finished');
 create policy "誰でも攻撃を読める" on battle_moves for select using (true);
 create policy "誰でも攻撃を送れる" on battle_moves for insert with check (true);
 

@@ -83,7 +83,9 @@ iOS に慣れていないメンバーでも目的のファイルを見つけや�
 - デプロイメントターゲットは iOS 26.2。デフォルトのアクター隔離は `MainActor`。
 - AR は実機でのみ動作する。シミュレータでは非対応メッセージが表示される。
 - 対戦は Supabase（Swift Package `supabase-swift`）でやり取りする。テーブルと関数の定義はリポジトリ直下の `supabase/schema.sql`。
-  - 接続先は `Services/SupabaseConfig.swift` に書く。空のままなら CPU が相手になる `DummyBattleService` を使う。
+  - 接続先（URL と anon key）は `Resources/SupabaseSecrets.plist` に書く。公開リポジトリなので `.gitignore` 済みで、コミットしない。ひな形は `supabase/SupabaseSecrets.example.plist`。
+  - plist がない・値が空なら、CPU が相手になる `DummyBattleService` を使う。
+  - `service_role`（secret）の鍵はアプリにもリポジトリにも入れない。
 
 ## ビルド確認
 
