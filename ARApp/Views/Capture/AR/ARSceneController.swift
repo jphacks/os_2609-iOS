@@ -67,7 +67,7 @@ final class ARSceneController: NSObject {
         guard floorAnchor != nil else { return }
         let ids = Set(monsters.map(\.id))
 
-        // 一覧からいなくなったのは捕まえられたモンスター
+        // 一覧からいなくなったのは、捕まえられたか逃げたモンスター
         for id in tasks.keys where !ids.contains(id) {
             disappear(id: id)
         }
@@ -101,6 +101,7 @@ final class ARSceneController: NSObject {
             entity.orientation = simd_quatf(angle: .random(in: 0..<(2 * .pi)), axis: [0, 1, 0])
             floorAnchor.addChild(entity)
             self.entities[wild.id] = entity
+            self.viewModel.monsterPlaced(id: wild.id)
 
             await self.walkAround(entity, home: home)
         }

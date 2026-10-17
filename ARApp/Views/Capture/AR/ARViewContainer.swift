@@ -35,9 +35,10 @@ struct ARViewContainer: UIViewRepresentable {
     }
 
     /// SwiftUI の状態が変わったときに呼ばれる
-    /// ここで読んだ ViewModel のプロパティ（wildMonsters）が変わるたびに、SwiftUI がもう一度呼んでくれる
+    /// ここで読んだ ViewModel のプロパティ（shownMonsters）が変わるたびに、SwiftUI がもう一度呼んでくれる
+    /// shownMonsters は現在地や会場のモンスターから計算しているので、それらが変わったときも呼ばれる
     func updateUIView(_ uiView: ARView, context: Context) {
-        context.coordinator.sync(viewModel.wildMonsters)
+        context.coordinator.sync(viewModel.shownMonsters)
     }
 
     /// View が画面から取り除かれるときに呼ばれる。カメラとセンサーを停止する
