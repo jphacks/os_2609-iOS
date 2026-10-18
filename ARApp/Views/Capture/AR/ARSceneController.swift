@@ -9,10 +9,11 @@ import UIKit
 import Combine
 
 /// ARView のシーンを操作する
-/// 担当：床を選んでアンカーを置くこと、エンティティの配置、モンスターを歩かせること、歩いた距離やタップなどシーンのイベントを ViewModel に伝えること
+/// 担当：床を選んでアンカーを置くこと、エンティティの配置、モンスターを歩かせること、
+/// モンスターが画面の外にいるときに、その方向を矢印で示すこと、歩いた距離やタップなどシーンのイベントを ViewModel に伝えること
 /// タップを受け取る `#selector` を使うため、NSObject を継承している
 final class ARSceneController: NSObject {
-    /// モンスターが出現する、自分からの距離（m）。少し歩かないと届かない距離にする
+    /// モンスターが出現する、自分からの距離（m）。近すぎると見つけにくいので、少し離れた場所に出す
     static let spawnDistanceRange: ClosedRange<Float> = 1.5...3
     /// モンスターが出現する方向の、カメラの正面からのずれの最大（ラジアン）。出たことに気づけるよう、前の方に出す
     static let spawnAngleRange: Float = .pi / 4
@@ -32,14 +33,16 @@ final class ARSceneController: NSObject {
     static let restRange: ClosedRange<Double> = 0.5...2
     /// 捕まえたときに縮んで消えるまでの時間（秒）
     static let disappearDuration: TimeInterval = 0.3
+    /// 矢印を出す位置の、画面の端からの距離（pt）。上の案内や下の現在地の表示に重ならないよう、少し内側に出す
+    static let arrowInset: CGFloat = 70
+    /// 矢印が指す、モンスターの足元からの高さ（m）。体の真ん中あたりを指す
+    static let arrowTargetHeight: Float = 0.5
 
     private let viewModel: ARCaptureViewModel
     private weak var arView: ARView?
     /// モンスターを置く床のアンカー。モンスターはすべてこの子にする
     private var floorAnchor: AnchorEntity?
-    /// floorAnchor を置いた床（ARKit の平面）の ID。その平面が消えたときに置き直すために使う
-    private var floorPlaneID: UUID?
-    /// 毎フレームの更新の購読。歩いた距離を測るのに使う
+    /// 毎フレームの更新の購読。歩いた距離を測るのと、矢印を動かすのに使う
     private var updateSubscription: Cancellable?
     /// 最後に歩いたとみなした、床の上での自分の位置（ワールド座標の x, z）
     private var lastWalkPoint: SIMD2<Float>?
@@ -52,6 +55,8 @@ final class ARSceneController: NSObject {
     private var isSessionInterrupted = false
     /// 失敗した AR を、少し待ってから開始し直すタスク
     private var restartTask: Task<Void, Never>?
+    /// 画面の外にいるモンスターの方向を指す矢印
+    private let arrow = MonsterArrow(inset: arrowInset)
 
     init(viewModel: ARCaptureViewModel) {
         self.viewModel = viewModel
@@ -64,9 +69,11 @@ final class ARSceneController: NSObject {
 
         updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
             self?.measureWalk()
+            self?.updateArrow()
         }
 
         arView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap)))
+        arrow.attach(to: arView)
     }
 
     /// ViewModel のモンスター一覧に合わせて、床のモンスターを置いたり消したりする
@@ -90,6 +97,7 @@ final class ARSceneController: NSObject {
         updateSubscription = nil
         restartTask?.cancel()
         restartTask = nil
+        arrow.detach()
         arView = nil
     }
 
@@ -105,25 +113,53 @@ final class ARSceneController: NSObject {
     ///
     /// 床探しを AnchorEntity(.plane(...)) に任せず、見つかっている平面から自分で床を選んで、そこに直接置く
     /// AnchorEntity(.plane(...)) では「種類を判定できないが、カメラより十分低い平面」を床として選べないため
+    ///
+    /// アンカーは平面（ARPlaneAnchor）に結び付けず、見つけたときの床の位置に固定する
+    /// 歩き回ると ARKit は平面をまとめて、元の平面を消すことがある。平面に結び付けると、
+    /// そのたびにモンスターがぷつんと消えてしまう（消えた平面に置き直すと、そのまま表示されなくなる）
     private func placeFloorIfPossible() {
         guard floorAnchor == nil, let arView, let floor = nearestFloor(in: arView) else { return }
 
-        let anchor = AnchorEntity(anchor: floor)
+        let anchor = AnchorEntity(world: floor.transform)
         arView.scene.addAnchor(anchor)
         floorAnchor = anchor
-        floorPlaneID = floor.identifier
         // ViewModel の shownMonsters が変わり、updateUIView から sync が呼ばれてモンスターが置かれる
         viewModel.floorStateChanged(isFound: true)
     }
 
     /// 見つかっている平面のうち、モンスターを置ける床で、カメラに一番近いもの
     private func nearestFloor(in arView: ARView) -> ARPlaneAnchor? {
-        guard let frame = arView.session.currentFrame else { return nil }
-        let cameraPosition = frame.camera.transform.columns.3
+        guard let cameraPosition = arView.session.currentFrame?.camera.transform.columns.3 else { return nil }
+        return floorPlanes(in: arView)
+            .min { distance($0, from: cameraPosition) < distance($1, from: cameraPosition) }
+    }
+
+    /// 見つかっている平面のうち、モンスターを置ける床
+    private func floorPlanes(in arView: ARView) -> [ARPlaneAnchor] {
+        guard let frame = arView.session.currentFrame else { return [] }
+        let cameraHeight = frame.camera.transform.columns.3.y
         return frame.anchors
             .compactMap { $0 as? ARPlaneAnchor }
-            .filter { Self.canPlaceMonster(on: $0, cameraHeight: cameraPosition.y) }
-            .min { distance($0, from: cameraPosition) < distance($1, from: cameraPosition) }
+            .filter { Self.canPlaceMonster(on: $0, cameraHeight: cameraHeight) }
+    }
+
+    /// 床のアンカーから見た点（x, z）での、床の高さ（床のアンカーから見た y）。床の平面がなければ nil
+    /// その点に一番近い床の平面の、今の高さを使う
+    /// 床のアンカーは最初に見つけた床の高さに固定しているが、ARKit は歩くうちに床の高さを直していく
+    /// アンカーの高さのまま置くと、最初の誤差や歩いたぶんのずれで、離れた場所では宙に浮いたり床に沈んだりする
+    private func floorHeight(at point: SIMD2<Float>) -> Float? {
+        guard let arView, let floorAnchor else { return nil }
+        let world = floorAnchor.convert(position: [point.x, 0, point.y], to: nil)
+        // 平面の中心（ワールド座標）。平面のアンカーの位置と中心はずれていることがある
+        func center(of plane: ARPlaneAnchor) -> SIMD4<Float> {
+            plane.transform * SIMD4(plane.center, 1)
+        }
+        func horizontalDistance(_ plane: ARPlaneAnchor) -> Float {
+            let c = center(of: plane)
+            return simd_distance(SIMD2(c.x, c.z), SIMD2(world.x, world.z))
+        }
+        guard let plane = floorPlanes(in: arView).min(by: { horizontalDistance($0) < horizontalDistance($1) }) else { return nil }
+        return floorAnchor.convert(position: [world.x, center(of: plane).y, world.z], from: nil).y
     }
 
     /// 種類を判定できなかった平面でも、カメラよりこれだけ（m）低ければ床とみなす
@@ -161,7 +197,6 @@ final class ARSceneController: NSObject {
         entities.removeAll()
         floorAnchor?.removeFromParent()
         floorAnchor = nil
-        floorPlaneID = nil
         // AR を開始し直すと位置の基準が変わるので、歩いた距離もそこから測り直す
         lastWalkPoint = nil
         viewModel.floorStateChanged(isFound: false)
@@ -174,9 +209,9 @@ final class ARSceneController: NSObject {
             guard let self, let floorAnchor = self.floorAnchor, let arView = self.arView, !Task.isCancelled else { return }
 
             self.addTapTarget(to: entity)
-            // y は MonsterEntity が決めた高さのまま（モデルは足元が原点なので 0）
+            // モデルは足元が原点なので、y を床の高さにすると床の上に立つ
             let home = Self.randomSpawnPoint(around: arView.cameraTransform, on: floorAnchor)
-            entity.position = [home.x, entity.position.y, home.y]
+            entity.position = [home.x, self.floorHeight(at: home) ?? entity.position.y, home.y]
             entity.orientation = simd_quatf(angle: .random(in: 0..<(2 * .pi)), axis: [0, 1, 0])
             floorAnchor.addChild(entity)
             self.entities[wild.id] = entity
@@ -220,7 +255,8 @@ final class ARSceneController: NSObject {
             guard !Task.isCancelled else { return }
 
             let walkDuration = TimeInterval(simd_length(direction) / speed)
-            transform.translation = [target.x, transform.translation.y, target.y]
+            // 歩くたびに、行き先の床の今の高さに合わせる（ARKit が床の高さを直していくため）
+            transform.translation = [target.x, floorHeight(at: target) ?? transform.translation.y, target.y]
             entity.monsterAnimator?.loop(.walk)
             entity.move(to: transform, relativeTo: entity.parent, duration: walkDuration, timingFunction: .linear)
             try? await Task.sleep(for: .seconds(walkDuration))
@@ -247,6 +283,13 @@ final class ARSceneController: NSObject {
         viewModel.walked(distance: distance)
     }
 
+    /// モンスターが画面の外にいたら、画面の端に、その方向を指す矢印を出す
+    private func updateArrow() {
+        guard let arView else { return }
+        let target = entities.values.first.map { $0.position(relativeTo: nil) + [0, Self.arrowTargetHeight, 0] }
+        arrow.update(pointingAt: target, in: arView)
+    }
+
     /// タップの当たり判定に使う形を付ける。形がないと arView.entity(at:) で見つからない
     /// 細かい形に合わせると腕の隙間などで外れやすいので、モデル全体を囲む箱にする
     private func addTapTarget(to entity: Entity) {
@@ -261,11 +304,7 @@ final class ARSceneController: NSObject {
         var hit = arView.entity(at: recognizer.location(in: arView))
         while let entity = hit {
             if let (id, monster) = entities.first(where: { $0.value === entity }) {
-                // スマホは床より 1m 以上高い位置にあるので、高さは無視して床の上の距離で測る
-                let camera = arView.cameraTransform.translation
-                let position = monster.position(relativeTo: nil)
-                let distance = simd_distance(SIMD2(camera.x, camera.z), SIMD2(position.x, position.z))
-                viewModel.monsterTapped(id: id, distance: distance)
+                viewModel.monsterTapped(id: id, position: monster.position(relativeTo: nil))
                 return
             }
             hit = entity.parent
@@ -297,7 +336,7 @@ final class ARSceneController: NSObject {
     }
 }
 
-/// AR が見つけた平面の変化に合わせて床のアンカーを置き、AR が失敗したり中断されたりしたら開始し直す
+/// AR が平面を見つけたら床のアンカーを置き、AR が失敗したり中断されたりしたら開始し直す
 extension ARSceneController: ARSessionDelegate {
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
         placeFloorIfPossible()
@@ -305,14 +344,6 @@ extension ARSceneController: ARSessionDelegate {
 
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
         // 平面は広がったり、あとから「床」と判定されたりするので、更新のたびにも確かめる
-        placeFloorIfPossible()
-    }
-
-    func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
-        // アンカーを置いた床が消えたら（ほかの平面とまとめられたときなど）、別の床に置き直す
-        // モンスターも一度消えて、新しい床の上に置き直される
-        guard let floorPlaneID, anchors.contains(where: { $0.identifier == floorPlaneID }) else { return }
-        removeFloor()
         placeFloorIfPossible()
     }
 

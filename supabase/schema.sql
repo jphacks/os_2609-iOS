@@ -35,14 +35,16 @@ create table battle_actions (
   -- その人の何回目の行動か（1 から）。受け取る側はこの順に反映し、抜けていたら届くまで待つ
   seq int not null,
   -- BattleAction の rawValue
-  action text not null check (action in ('normalAttack', 'specialAttack', 'fever', 'feverAttack')),
+  -- takeSpecial / dodgeSpecial は、相手の必殺技を受けた・よけたという結果（撃たれた側が送る）
+  action text not null check (action in ('normalAttack', 'specialAttack', 'fever', 'feverAttack', 'takeSpecial', 'dodgeSpecial')),
   created_at timestamptz not null default now(),
   primary key (battle_id, player_id, seq)
 );
 
 -- フィーバーが正しく使われているかを、書き込む前に確かめる
 -- アプリを書き換えて、ゲージが溜まっていないのにフィーバーしたり、ダメージ 2 倍の攻撃を出し続けたりできないようにする
--- - fever：前のフィーバーのあとに、通常攻撃（normalAttack）を 10 回以上している（BattleEngine の feverGaugeGain が 10 で、満タンが 100）
+-- - fever：前のフィーバーのあとに、通常攻撃（normalAttack）を 5 回以上している（BattleEngine の feverMinAttacks）
+--   フィーバーになるかはアプリの中の抽選（FeverLottery）で決めるので、サーバーは続けてフィーバーしていないことだけを確かめる
 -- - feverAttack：最後のフィーバーから 5 秒以内（BattleEngine の feverDuration）
 --   送るのが遅れることがあるので 3 秒の余裕を持たせる
 -- 確かめられないときは書き込みを断る。断られたアプリは、送れなかったとして対戦をやめる
@@ -75,8 +77,8 @@ begin
       select count(*) from battle_actions
       where battle_id = new.battle_id and player_id = new.player_id and action = 'normalAttack'
         and seq < new.seq and seq > coalesce(last_fever.seq, 0)
-    ) < 10 then
-      raise exception 'フィーバーゲージが溜まっていません';
+    ) < 5 then
+      raise exception '前のフィーバーから通常攻撃をしていません';
     end if;
   elsif last_fever.seq is null or last_fever.created_at < now() - interval '8 seconds' then
     raise exception 'フィーバー中ではありません';

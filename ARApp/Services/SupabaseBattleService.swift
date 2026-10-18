@@ -74,6 +74,8 @@ final class SupabaseBattleService: BattleService {
     }
 
     func findOpponent(monster: Monster, pairingToken: UUID?) async throws -> Monster {
+        // CPU 対戦用のトークンなし呼び出しで、オンラインの部屋を作らない。
+        guard pairingToken != nil else { throw ServiceError.invalidData }
         await leave()
         do {
             return try await joinAndWait(monster: monster, pairingToken: pairingToken)

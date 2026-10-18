@@ -16,13 +16,16 @@ struct MapView: View {
         VStack(spacing: 16) {
             Text(locationViewModel.statusMessage)
                 .font(.headline)
+                .foregroundStyle(locationViewModel.isMoving ? .orange : .primary)
 
             IndoorMapComponent(
                 locations: Location.registered,
                 currentLocation: locationViewModel.currentLocation,
-                currentPosition: locationViewModel.currentPosition
+                currentPosition: locationViewModel.currentPosition,
+                confidence: locationViewModel.confidence
             )
 
+            LocationSignalComponent(viewModel: locationViewModel)
             NearbyBattleReceptionComponent(discovery: nearbyBattleDiscovery)
         }
         .padding()
@@ -42,8 +45,7 @@ struct MapView: View {
             "近くに対戦相手がいます",
             isPresented: Binding(
                 get: { nearbyBattleDiscovery.pendingCandidate != nil },
-                // ボタンの action が候補を確定・破棄する。ここで先に nil にすると
-                // 「対戦する」の押下時にトークンを取り出せなくなる。
+                // 承諾・辞退の処理は各ボタンが行う。自動解除で候補を消さない。
                 set: { _ in }
             )
         ) {
@@ -55,6 +57,32 @@ struct MapView: View {
             }
         } message: {
             Text("お互いに対戦受付中であることを確認しました。対戦を開始しますか？")
+        }
+    }
+}
+
+/// 最寄りビーコンと推定の確からしさを表示する
+private struct LocationSignalComponent: View {
+    let viewModel: LocationViewModel
+
+    var body: some View {
+        HStack {
+            Label(
+                viewModel.isMoving ? "停止後に位置を測定します" : (viewModel.nearestBeacon ?? "ビーコン未検出"),
+                systemImage: viewModel.isMoving ? "figure.walk" : "dot.radiowaves.left.and.right"
+            )
+            Spacer()
+            Text("信頼度：\(viewModel.confidence.label)")
+                .foregroundStyle(confidenceColor)
+        }
+        .font(.subheadline)
+    }
+
+    private var confidenceColor: Color {
+        switch viewModel.confidence {
+        case .high: .blue
+        case .medium: .orange
+        case .low, .unavailable: .secondary
         }
     }
 }

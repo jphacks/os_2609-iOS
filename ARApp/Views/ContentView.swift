@@ -8,32 +8,48 @@
 import SwiftUI
 
 struct ContentView: View {
+    /// アプリのタブ
+    private enum AppTab {
+        case map, capture, battle
+    }
+
     /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
     @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
-    @State private var battleViewModel = BattleViewModel(service: Self.makeBattleService())
+    @State private var battleViewModel: BattleViewModel
     @State private var nearbyBattleDiscovery = NearbyBattleDiscovery()
-    @State private var selectedTab = "map"
-    /// 捕まえたモンスターの保存先。図鑑や編成でも同じものを使うので、アプリ全体で 1 つだけ作る
-    @State private var monsterCollection = SwiftDataMonsterCollection()
+    @State private var selectedTab = AppTab.map
+    /// 捕まえたモンスターの保存先（ARAppApp で 1 つだけ作ったもの）
+    let monsterCollection: any MonsterCollection
+
+    init(monsterCollection: any MonsterCollection) {
+        self.monsterCollection = monsterCollection
+        _battleViewModel = State(initialValue: BattleViewModel(
+            service: Self.makeBattleService(), collection: monsterCollection
+        ))
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("マップ", systemImage: "map.fill", value: "map") {
+            Tab("マップ", systemImage: "map.fill", value: AppTab.map) {
                 MapView(
                     locationViewModel: locationViewModel,
                     nearbyBattleDiscovery: nearbyBattleDiscovery,
                     onStartBattle: { pairingToken in
                         battleViewModel.findOpponent(pairingToken: pairingToken)
-                        selectedTab = "battle"
+                        selectedTab = .battle
                     }
                 )
             }
-            Tab("捕獲", systemImage: "camera.viewfinder", value: "capture") {
+            Tab("捕獲", systemImage: "camera.viewfinder", value: AppTab.capture) {
                 ARCaptureView(locationViewModel: locationViewModel, collection: monsterCollection)
             }
-            Tab("バトル", systemImage: "bolt.fill", value: "battle") {
+            Tab("マルチバトル", systemImage: "bolt.fill", value: AppTab.battle) {
                 BattleView(viewModel: battleViewModel)
             }
+        }
+        // 最初にモンスターを選ぶ画面を出している間はマップタブのままなので、捕獲画面の ARView は作られない
+        .starterMonsterSelection(collection: monsterCollection) {
+            selectedTab = .capture
         }
         .onAppear {
             locationViewModel.start()
@@ -52,18 +68,18 @@ struct ContentView: View {
         #endif
     }
 
-    /// SupabaseConfig に接続先が書いてあれば Supabase で対戦し、なければ CPU が相手になるダミーを使う
-    /// 【開発用】ここで DummyBattleService を使うのは開発中だけ。リリースするときは SupabaseBattleService だけにする
-    /// （DummyBattleService のクラス自体は BattleView の #Preview で使うので残す）
+    /// SupabaseConfig に接続先が書いてあれば Supabase で対戦し、なければ CPU が相手になる
+    /// 【開発用】ここで CPUBattleService を使うのは開発中だけ。リリースするときは SupabaseBattleService だけにする
+    /// （CPUBattleService のクラス自体は、捕獲画面の野生のモンスターとのバトルで使うので残す）
     private static func makeBattleService() -> any BattleService {
         if SupabaseConfig.isConfigured, let url = URL(string: SupabaseConfig.url) {
             SupabaseBattleService(url: url, anonKey: SupabaseConfig.anonKey)
         } else {
-            DummyBattleService()
+            CPUBattleService()
         }
     }
 }
 
 #Preview {
-    ContentView()
+    ContentView(monsterCollection: SwiftDataMonsterCollection(inMemory: true))
 }

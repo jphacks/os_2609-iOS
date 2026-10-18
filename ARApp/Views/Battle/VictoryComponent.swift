@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-/// 勝ちが確定したときに、大きく「VICTORY!」を出す。後ろで金色の光の筋が回る
-/// 少し見せたあと、BattleFightComponent がリザルト（BattleResultComponent）に切り替える
+/// 勝ちが確定したときに、大きく「VICTORY!」を出す。後ろで黄色とピンクの光の筋が回る
+/// 少し見せたあと、BattleFightComponent がリザルト（BattleResultComponent）に切り替える（野生のモンスターとのバトルでは、捕獲画面に戻して詳細画面を出す）
 struct VictoryComponent: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isShown = false
@@ -23,8 +23,9 @@ struct VictoryComponent: View {
             // 光の筋
             ZStack {
                 ForEach(0..<Self.rayCount, id: \.self) { index in
-                    Capsule()
-                        .fill(LinearGradient(colors: [.yellow.opacity(0.7), .clear], startPoint: .bottom, endPoint: .top))
+                    Rectangle()
+                        .fill(index.isMultiple(of: 2) ? BattleStyle.yellow : BattleStyle.pink)
+                        .opacity(0.7)
                         .frame(width: 24, height: 260)
                         .offset(y: -130)
                         .rotationEffect(.degrees(Double(index) / Double(Self.rayCount) * 360))
@@ -34,15 +35,11 @@ struct VictoryComponent: View {
             .opacity(isShown ? 1 : 0)
 
             Text("VICTORY!")
-                .font(.system(size: 72, weight: .black, design: .rounded))
-                .italic()
+                .font(BattleStyle.display(88))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-                .foregroundStyle(
-                    LinearGradient(colors: [.white, .yellow, .orange], startPoint: .top, endPoint: .bottom)
-                )
-                .shadow(color: .orange, radius: 16)
-                .shadow(color: .black.opacity(0.5), radius: 2, y: 2)
+                .foregroundStyle(BattleStyle.yellow)
+                .onBand(BattleStyle.pink, slant: 24)
                 .padding(.horizontal)
                 .scaleEffect(isShown || reduceMotion ? 1 : 0.2)
                 .opacity(isShown ? 1 : 0)

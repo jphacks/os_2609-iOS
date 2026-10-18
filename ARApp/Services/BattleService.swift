@@ -6,9 +6,9 @@
 import Foundation
 
 /// 対戦相手とのやり取り
-/// 本番は SupabaseBattleService、Supabase がないときは DummyBattleService（CPU が相手）を使う
+/// 本番は SupabaseBattleService、Supabase がないときと野生のモンスターとのバトルでは CPUBattleService（CPU が相手）を使う
 protocol BattleService: AnyObject {
-    /// 対戦相手を探す。pairingToken を渡した場合は、BLE で相互認識した同じ相手だけと対戦する
+    /// オンライン対戦では双方承諾済みの pairingToken が必須。CPU 対戦では nil を渡す
     /// 誰も待っていなければ、自分が待つ側になって相手が来るまで待ち続ける
     /// 待っている間に Task がキャンセルされたら、待つのをやめる
     /// 見つかった相手のモンスターを返す

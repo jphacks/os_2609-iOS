@@ -11,8 +11,8 @@ import SwiftUI
 /// 当たったときの音は BattleSoundPlayer が鳴らす
 
 extension BattleViewModel.Hit {
-    /// 必殺技を撃つ前の溜めの動き
-    static let specialCharge = MonsterAnimation.jump
+    /// 必殺技を撃ってから、相手が受けたかよけたかが決まるまでの溜めの動き。跳んで、空中で待つ
+    static let specialCharge = MonsterAnimationRequest(animations: [.jump, .jumpIdle], ending: .repeats)
     /// 通常攻撃で、タップしてから相手に当たるまでの時間（秒）
     /// タップしてすぐに当たったと感じられるよう、攻撃の動きを待たずに、踏み込みが届くころに当てる
     static let normalImpactTime = 0.1
@@ -24,11 +24,9 @@ extension BattleViewModel.Hit {
     static let finishingDeathSpeed = 0.5
 
     /// 攻撃を始めてから相手に当たるまでの時間（秒）。のけぞり、ダメージの数字、光、音、振動をこの分だけ遅らせる
-    /// 必殺技は溜めの動きの分だけ遅くなる。溜めの動きは、終わる少し前（混ぜて切り替える時間）から攻撃の動きに切り替わる
+    /// 必殺技の溜めは結果が決まる前に流し終えているので、ここには含めない
     var impactDelay: Double {
-        isSpecial
-            ? Self.specialCharge.duration - MonsterAnimation.transitionDuration + Self.specialImpactTime
-            : Self.normalImpactTime
+        isSpecial ? Self.specialImpactTime : Self.normalImpactTime
     }
 }
 
@@ -43,14 +41,15 @@ extension View {
     }
 }
 
-/// タップした位置に広がって消える円
+/// タップした位置に広がって消えるひし形
 struct TapRippleComponent: View {
     @State private var isExpanded = false
 
     var body: some View {
-        Circle()
-            .stroke(.secondary, lineWidth: 2)
-            .frame(width: 60, height: 60)
+        Rectangle()
+            .stroke(BattleStyle.yellow, lineWidth: 3)
+            .frame(width: 44, height: 44)
+            .rotationEffect(.degrees(45))
             .scaleEffect(isExpanded ? 1 : 0.2)
             .opacity(isExpanded ? 0 : 1)
             .onAppear {
@@ -59,7 +58,7 @@ struct TapRippleComponent: View {
     }
 }
 
-/// 続けて当てた回数（「5 HIT!」）。2 回目から出し、回数が増えるほど文字が大きく、10 回からは赤くなる
+/// 続けて当てた回数（「5 HIT!」）。2 回目から出し、回数が増えるほど文字が大きく、10 回からはピンクになる
 /// 回数が増えるたびに、一瞬大きくなって弾む
 struct ComboComponent: View {
     let count: Int
@@ -67,9 +66,9 @@ struct ComboComponent: View {
     var body: some View {
         if count >= 2 {
             Text("\(count) HIT!")
-                .font(.system(size: 28 + CGFloat(min(count, 20)), weight: .heavy, design: .rounded))
-                .foregroundStyle(count >= 10 ? .red : .orange)
-                .shadow(radius: 2)
+                .font(BattleStyle.display(32 + CGFloat(min(count, 20))))
+                .foregroundStyle(count >= 10 ? BattleStyle.pink : BattleStyle.yellow)
+                .onBand(.black)
                 // 画面の右端に置くので、右端を基準に大きくする（真ん中を基準にすると、はみ出す）
                 .phaseAnimator([1, 1.3], trigger: count) { content, scale in
                     content.scaleEffect(scale, anchor: .trailing)

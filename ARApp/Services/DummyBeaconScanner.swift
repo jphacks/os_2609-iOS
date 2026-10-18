@@ -17,14 +17,14 @@ final class DummyBeaconScanner: BeaconScanner {
     var onReceive: ((_ beaconName: String, _ rssi: Int) -> Void)?
 
     /// 巡る地点の RSSI のパターン。1 つだけならそこに立ち続ける
-    private let route: [[Int]]
+    private let route: [[String: Int]]
     /// 1 つの地点に立ち止まる時間（秒）
     private let stayDuration: TimeInterval
     /// 次の地点まで歩く時間（秒）
     private let walkDuration: TimeInterval
     private var emitTask: Task<Void, Never>?
 
-    /// 初期値は登録済みの最初の地点（入口）に立っているときのパターン
+    /// 初期値は登録済みの最初の地点（地点1）に立っているときのパターン
     init(location: Location = Location.registered[0]) {
         route = [location.fingerprint]
         stayDuration = 0
@@ -46,8 +46,8 @@ final class DummyBeaconScanner: BeaconScanner {
             while !Task.isCancelled {
                 guard let self else { return }
                 let fingerprint = self.fingerprint(elapsed: Date.now.timeIntervalSince(startedAt))
-                for (name, rssi) in zip(Location.beaconNames, fingerprint) {
-                    self.onReceive?(name, rssi + Int.random(in: -3...3))
+                for (beaconName, rssi) in fingerprint {
+                    self.onReceive?(beaconName, rssi + Int.random(in: -3...3))
                 }
                 try? await Task.sleep(for: .milliseconds(200))
             }
@@ -60,7 +60,7 @@ final class DummyBeaconScanner: BeaconScanner {
     }
 
     /// 流し始めてからの経過時間に対する RSSI のパターン
-    private func fingerprint(elapsed: TimeInterval) -> [Int] {
+    private func fingerprint(elapsed: TimeInterval) -> [String: Int] {
         guard route.count > 1 else { return route[0] }
 
         // 「立ち止まる → 次の地点へ歩く」を 1 区間として、全区間を繰り返す
@@ -73,6 +73,10 @@ final class DummyBeaconScanner: BeaconScanner {
         let walked = time - Double(leg) * legDuration - stayDuration
         guard walked > 0 else { return from }
         let ratio = walked / walkDuration
-        return zip(from, to).map { Int((Double($0) + Double($1 - $0) * ratio).rounded()) }
+        return Dictionary(uniqueKeysWithValues: Location.beaconIDs.compactMap { beaconName in
+            guard let fromRSSI = from[beaconName], let toRSSI = to[beaconName] else { return nil }
+            let rssi = Int((Double(fromRSSI) + Double(toRSSI - fromRSSI) * ratio).rounded())
+            return (beaconName, rssi)
+        })
     }
 }
