@@ -39,7 +39,11 @@ final class LocationViewModel {
     /// 最後に動きを検出してから「停止」と見なすまでの時間（秒）
     static let stationaryDelay: TimeInterval = 1.5
     /// userAcceleration の大きさ（G）がこの値以上なら移動と判定する
-    static let movementAccelerationThreshold = 0.035
+    static let movementAccelerationThreshold = 0.06
+    /// この回数だけ連続で動きを検出してから移動中に切り替える。手ぶれを除外する
+    static let consecutiveMotionSamplesRequired = 5
+    /// 現在地を確定後、多少の動きや電波の揺れで地点を切り替えない保持時間（秒）
+    static let locationHoldDuration: TimeInterval = 5
 
     /// 推定した最寄りチェックポイント
     private(set) var currentLocation: Location?
@@ -80,6 +84,8 @@ final class LocationViewModel {
     private var updateTask: Task<Void, Never>?
     private var lastMotionDetectedAt: Date?
     private var stationaryMeasurementStartedAt: Date?
+    private var consecutiveMotionSampleCount = 0
+    private var locationConfirmedAt: Date?
 
     init(scanner: any BeaconScanner) {
         self.scanner = scanner
@@ -112,6 +118,8 @@ final class LocationViewModel {
         samples = [:]
         lastMotionDetectedAt = nil
         stationaryMeasurementStartedAt = nil
+        consecutiveMotionSampleCount = 0
+        locationConfirmedAt = nil
         isMoving = false
         isPreparingEstimate = false
         resetEstimate()
@@ -173,8 +181,17 @@ final class LocationViewModel {
         }
 
         let nextBestError = candidates.dropFirst().first?.meanAbsoluteError ?? .infinity
+        // 現在地を表示した直後は、RSSIの小さな揺れで別の地点へ飛ばさない
+        if currentLocation?.id != best.location.id, isHoldingCurrentLocation {
+            return
+        }
+
+        let locationChanged = currentLocation?.id != best.location.id
         currentLocation = best.location
         currentPosition = best.location.iconPosition
+        if locationChanged {
+            locationConfirmedAt = now
+        }
         confidence = Self.confidence(
             meanAbsoluteError: best.meanAbsoluteError,
             margin: nextBestError - best.meanAbsoluteError,
@@ -201,16 +218,25 @@ final class LocationViewModel {
         }
     }
 
-    /// 閾値以上の加速度を受け取った時点で推定を無効化する
+    /// 連続した加速度を受け取った時点で推定を無効化する。単発の手ぶれは無視する
     private func recordMotionAcceleration(_ magnitude: Double) {
-        guard magnitude >= Self.movementAccelerationThreshold else { return }
+        guard magnitude >= Self.movementAccelerationThreshold else {
+            consecutiveMotionSampleCount = 0
+            return
+        }
 
+        consecutiveMotionSampleCount += 1
+        guard consecutiveMotionSampleCount >= Self.consecutiveMotionSamplesRequired else { return }
+
+        // 現在地を確定した直後は、少し端末が動いても表示を保持する
+        guard !isHoldingCurrentLocation else { return }
         lastMotionDetectedAt = .now
         guard !isMoving else { return }
 
         isMoving = true
         stationaryMeasurementStartedAt = nil
         isPreparingEstimate = false
+        locationConfirmedAt = nil
         samples = [:]
         resetEstimate()
     }
@@ -225,6 +251,7 @@ final class LocationViewModel {
         }
 
         isMoving = false
+        consecutiveMotionSampleCount = 0
         beginStationaryMeasurement()
     }
 
@@ -241,6 +268,12 @@ final class LocationViewModel {
         currentPosition = nil
         nearestBeacon = nil
         confidence = .unavailable
+        locationConfirmedAt = nil
+    }
+
+    private var isHoldingCurrentLocation: Bool {
+        guard let locationConfirmedAt else { return false }
+        return Date.now.timeIntervalSince(locationConfirmedAt) < Self.locationHoldDuration
     }
 
     /// 誤差が小さく、次点との差が大きく、2台以上を受信できているほど信頼度を上げる
