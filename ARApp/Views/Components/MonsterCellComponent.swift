@@ -14,6 +14,8 @@ struct MonsterCellComponent: View {
     let isSelected: Bool
 
     @State private var image: UIImage?
+    /// 画像を描けなかったか（USDZ を読み込めなかった）。描いている途中と分けて、読み込み中のまま回り続けないようにする
+    @State private var isImageUnavailable = false
 
     var body: some View {
         VStack(spacing: 4) {
@@ -32,7 +34,11 @@ struct MonsterCellComponent: View {
                 .stroke(isSelected ? BattleStyle.yellow : .white.opacity(0.2), lineWidth: isSelected ? 3 : 1)
         }
         .task(id: monster.modelName) {
-            image = await MonsterThumbnail.image(for: monster)
+            let loaded = await MonsterThumbnail.image(for: monster)
+            // キャンセルされて nil が返ったときは、描けなかったことにしない
+            guard !Task.isCancelled else { return }
+            image = loaded
+            isImageUnavailable = loaded == nil
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -53,6 +59,11 @@ struct MonsterCellComponent: View {
                     .scaledToFit()
                     .foregroundStyle(.white.opacity(0.15))
             }
+        } else if isImageUnavailable {
+            Image(systemName: "questionmark.square.dashed")
+                .font(.largeTitle)
+                .foregroundStyle(.white.opacity(0.4))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

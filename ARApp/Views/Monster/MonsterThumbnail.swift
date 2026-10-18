@@ -22,15 +22,20 @@ enum MonsterThumbnail {
 
     /// 描いた画像。モデル名ごとに覚えておく
     private static var cache: [String: UIImage] = [:]
+    /// 読み込めなかったモデル名。何度描いても失敗するので、2 回目からは描かずに nil を返す
+    private static var failedModelNames: Set<String> = []
     /// 最後に頼まれた画像を描くタスク。次に頼まれた画像は、これが終わってから描く
     private static var lastRender: Task<Void, Never>?
 
-    /// モンスターの画像。初めてなら描き、2 回目からは覚えている画像を返す。読み込めなかったときは nil
+    /// モンスターの画像。初めてなら描き、2 回目からは覚えている画像を返す
+    /// 読み込めなかったときと、描く前に頼んだ側がキャンセルされたとき（図鑑を閉じたなど）は nil
     /// 背景は透明。まだ捕まえていないモンスターは、この画像を 1 色で塗ってシルエットにする
     static func image(for monster: Monster) async -> UIImage? {
         if let cached = cache[monster.modelName] {
             return cached
         }
+        guard !failedModelNames.contains(monster.modelName) else { return nil }
+
         let previous = lastRender
         let render = Task { () -> UIImage? in
             await previous?.value
@@ -38,12 +43,23 @@ enum MonsterThumbnail {
                 return cached
             }
             try? await Task.sleep(for: pauseBetweenRenders)
+            // 待っている間に頼んだ側がいなくなっていたら描かない。描くとメインスレッドが止まり、戻った AR がカクつく
+            guard !Task.isCancelled else { return nil }
             let image = Self.render(monster)
-            cache[monster.modelName] = image
+            if let image {
+                cache[monster.modelName] = image
+            } else {
+                failedModelNames.insert(monster.modelName)
+            }
             return image
         }
         lastRender = Task { _ = await render.value }
-        return await render.value
+        // 描くタスクは頼んだ側とは別に動くので、頼んだ側がキャンセルされたら、描くタスクにも伝える
+        return await withTaskCancellationHandler {
+            await render.value
+        } onCancel: {
+            render.cancel()
+        }
     }
 
     private static func render(_ monster: Monster) -> UIImage? {
