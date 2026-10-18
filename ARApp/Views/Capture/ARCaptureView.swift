@@ -36,9 +36,12 @@ struct ARCaptureView: View {
     @State private var arSession = ARSession()
     /// メニューボタンを押して、「図鑑」「編成」のボタンを出しているか
     @State private var isMenuExpanded = false
+    /// 捕まえたモンスターの保存先。野生のモンスターとのバトルにも、自分のモンスターを読むために渡す
+    private let collection: any MonsterCollection
 
     init(locationViewModel: LocationViewModel, collection: any MonsterCollection) {
         self.locationViewModel = locationViewModel
+        self.collection = collection
         _viewModel = State(initialValue: ARCaptureViewModel(collection: collection))
     }
 
@@ -109,6 +112,7 @@ struct ARCaptureView: View {
                 if case .battle = arScreen, let wild = viewModel.battleMonster, let position = viewModel.battleMonsterPosition {
                     BattleView(
                         service: CPUBattleService(opponent: wild.monster),
+                        collection: collection,
                         wildBattle: BattleView.WildBattle(
                             monster: wild.monster,
                             arHandoff: ARHandoff(session: arSession, opponentPosition: position),

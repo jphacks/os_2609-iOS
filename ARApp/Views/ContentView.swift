@@ -29,7 +29,7 @@ struct ContentView: View {
                 ARCaptureView(locationViewModel: locationViewModel, collection: monsterCollection)
             }
             Tab("マルチバトル", systemImage: "bolt.fill", value: AppTab.battle) {
-                BattleView(service: battleService)
+                BattleView(service: battleService, collection: monsterCollection)
             }
         }
         // 最初にモンスターを選ぶ画面を出している間はマップタブのままなので、捕獲画面の ARView は作られない
