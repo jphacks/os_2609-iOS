@@ -73,6 +73,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
 
     func setAccepting(_ accepting: Bool) {
         guard accepting != isAccepting else { return }
+        print("[NearbyBattle] reception accepting=\(accepting), configured=\(isPairingConfigured), bluetoothReady=\(isBluetoothReady)")
         isAccepting = accepting
         pendingCandidate = nil
         reservedToken = nil
@@ -82,10 +83,12 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
         if accepting {
             guard let client = pairingClient else {
                 isAccepting = false
+                print("[NearbyBattle] Supabase configuration unavailable: check SupabaseSecrets.plist URL and AnonKey (values are not logged)")
                 statusMessage = "対戦の接続設定がありません"
                 return
             }
             sessionID = UUID() // 受付の世代を分け、以前の通知・通信結果を引き継がない
+            print("[NearbyBattle] starting session=\(sessionID)")
             readyToken = nil
             statusMessage = nil
             startPairing(client: client, session: sessionID)
@@ -105,6 +108,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     func confirmCandidate() {
         guard pendingCandidate != nil else { return }
         pendingCandidate = nil
+        print("[NearbyBattle] user accepted session=\(sessionID), token=\(String(describing: reservedToken))")
         wantsToAccept = true
         isWaitingForConsent = true
     }
@@ -158,6 +162,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
                 }
             } catch {
                 guard !Task.isCancelled, let self, sessionID == session else { return }
+                print("[NearbyBattle] pairing loop failed session=\(session): \(String(reflecting: error))")
                 statusMessage = "対戦相手との確認に失敗しました。受付をオンにして再度お試しください"
                 setAccepting(false)
             }
@@ -166,9 +171,27 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
 
     private static func pair(client: SupabaseClient, session: UUID, action: String,
                              peer: UUID? = nil, token: UUID? = nil) async throws -> [NearbyPairRow] {
-        try await client.rpc("nearby_pair", params: NearbyPairParams(
-            session: session, action: action, peer: peer, token: token
-        )).execute().value
+        // poll は 500ms ごとなので、空の正常応答はログを省略する。
+        if action != "poll" {
+            print("[NearbyBattle] RPC nearby_pair request action=\(action), session=\(session), peer=\(String(describing: peer)), token=\(String(describing: token))")
+        }
+        do {
+            let rows: [NearbyPairRow] = try await client.rpc("nearby_pair", params: NearbyPairParams(
+                session: session, action: action, peer: peer, token: token
+            )).execute().value
+            if action != "poll" || !rows.isEmpty {
+                print("[NearbyBattle] RPC nearby_pair success action=\(action), rows=\(rows.count)")
+                for row in rows {
+                    print("[NearbyBattle] pair token=\(row.id), status=\(row.status)")
+                }
+            }
+            return rows
+        } catch {
+            let nsError = error as NSError
+            print("[NearbyBattle] RPC nearby_pair FAILED action=\(action), session=\(session), peer=\(String(describing: peer)), token=\(String(describing: token))")
+            print("[NearbyBattle] error type=\(type(of: error)), domain=\(nsError.domain), code=\(nsError.code), details=\(String(reflecting: error))")
+            throw error
+        }
     }
 
     // MARK: - Peripheral / advertising
@@ -358,7 +381,9 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     private func receive(remoteSessionID: UUID) {
         guard isAccepting, reservedToken == nil, remoteSessionID != sessionID else { return }
         // BLE の受信だけでは確定しない。サーバーが両端末を排他的に確保する。
-        remoteSessions.insert(remoteSessionID)
+        if remoteSessions.insert(remoteSessionID).inserted {
+            print("[NearbyBattle] BLE peer received session=\(sessionID), peer=\(remoteSessionID)")
+        }
     }
 
     /// RSSI が強い 1 台だけに接続する。6〜7 台を同時に見つけても接続競合を起こさない。
