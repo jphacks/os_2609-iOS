@@ -50,8 +50,3 @@ struct BattleMonsterComponent: View {
         }
     }
 }
-
-#Preview {
-    BattleMonsterComponent(monster: Monster.all[0], animation: nil, facing: 0.4)
-        .frame(width: 240, height: 240)
-}
