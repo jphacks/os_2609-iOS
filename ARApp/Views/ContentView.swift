@@ -8,23 +8,33 @@
 import SwiftUI
 
 struct ContentView: View {
+    /// アプリのタブ
+    private enum AppTab {
+        case map, capture, battle
+    }
+
     /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
     @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
     @State private var battleService = Self.makeBattleService()
-    /// 捕まえたモンスターの保存先。図鑑や編成でも同じものを使うので、アプリ全体で 1 つだけ作る
-    @State private var monsterCollection = SwiftDataMonsterCollection()
+    @State private var selectedTab = AppTab.map
+    /// 捕まえたモンスターの保存先（ARAppApp で 1 つだけ作ったもの）
+    let monsterCollection: any MonsterCollection
 
     var body: some View {
-        TabView {
-            Tab("マップ", systemImage: "map.fill") {
+        TabView(selection: $selectedTab) {
+            Tab("マップ", systemImage: "map.fill", value: AppTab.map) {
                 MapView(locationViewModel: locationViewModel)
             }
-            Tab("捕獲", systemImage: "camera.viewfinder") {
+            Tab("捕獲", systemImage: "camera.viewfinder", value: AppTab.capture) {
                 ARCaptureView(locationViewModel: locationViewModel, collection: monsterCollection)
             }
-            Tab("マルチバトル", systemImage: "bolt.fill") {
+            Tab("マルチバトル", systemImage: "bolt.fill", value: AppTab.battle) {
                 BattleView(service: battleService)
             }
+        }
+        // 最初にモンスターを選ぶ画面を出している間はマップタブのままなので、捕獲画面の ARView は作られない
+        .starterMonsterSelection(collection: monsterCollection) {
+            selectedTab = .capture
         }
         .onAppear {
             locationViewModel.start()
@@ -56,5 +66,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(monsterCollection: SwiftDataMonsterCollection(inMemory: true))
 }
