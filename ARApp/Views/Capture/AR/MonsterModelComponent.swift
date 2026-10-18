@@ -15,6 +15,9 @@ import SceneKit
 /// SceneKit は RealityKit とは別の仕組みで描くので、捕獲画面に影響しない
 struct MonsterModelComponent: View {
     let monster: Monster
+    /// 表示する高さ。省略時はモンスター本来の大きさ
+    var height: Float? = nil
+    var facing: Angle = .zero
 
     /// 指で回した角度（縦の軸まわり）
     @State private var angle = Angle.zero
@@ -25,7 +28,7 @@ struct MonsterModelComponent: View {
     private static let degreesPerPoint = 0.5
 
     var body: some View {
-        MonsterModelSceneView(monster: monster, angle: angle)
+        MonsterModelSceneView(monster: monster, height: height ?? monster.size, angle: facing + angle)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture()
@@ -42,6 +45,7 @@ struct MonsterModelComponent: View {
 /// SceneKit の SCNView を SwiftUI で使うためのラッパー。モデルを 1 体だけ、回す台に乗せて表示する
 private struct MonsterModelSceneView: UIViewRepresentable {
     let monster: Monster
+    let height: Float
     let angle: Angle
 
     /// 立っている姿勢として止めておく時刻（秒）。USDZ のアニメーションの Idle の区間（MonsterAnimation を参照）の中ほど
@@ -62,7 +66,7 @@ private struct MonsterModelSceneView: UIViewRepresentable {
         let scene = SCNScene()
         view.scene = scene
         scene.rootNode.addChildNode(context.coordinator.turntable)
-        if let model = Self.loadModel(of: monster) {
+        if let model = Self.loadModel(of: monster, height: height) {
             context.coordinator.turntable.addChildNode(model)
         }
 
@@ -87,7 +91,7 @@ private struct MonsterModelSceneView: UIViewRepresentable {
     }
 
     /// USDZ を読み込み、高さが monster.size になるように縮め、体の真ん中が原点に来るように置く
-    private static func loadModel(of monster: Monster) -> SCNNode? {
+    private static func loadModel(of monster: Monster, height targetHeight: Float) -> SCNNode? {
         guard let url = Bundle.main.url(forResource: monster.modelName, withExtension: "usdz"),
               let scene = try? SCNScene(url: url) else {
             // 【開発用】原因を調べるためのログ。リリースするときに消してよい
@@ -101,11 +105,11 @@ private struct MonsterModelSceneView: UIViewRepresentable {
         // モデルは 3〜4m の大きさで作られているので、高さが size になるように縮小する（MonsterEntity と同じ）
         let (minBounds, maxBounds) = model.boundingBox
         let height = maxBounds.y - minBounds.y
-        let scale = height > 0 ? monster.size / height : 1
+        let scale = height > 0 ? targetHeight / height : 1
         model.scale = SCNVector3(scale, scale, scale)
         model.position = SCNVector3(
             -(minBounds.x + maxBounds.x) / 2 * scale,
-            -minBounds.y * scale - monster.size / 2,
+            -minBounds.y * scale - targetHeight / 2,
             -(minBounds.z + maxBounds.z) / 2 * scale
         )
 
