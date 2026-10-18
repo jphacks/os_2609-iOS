@@ -90,9 +90,8 @@ final class BattleViewModel {
     private static let myID: FighterID = "me"
     private static let opponentID: FighterID = "opponent"
 
-    /// 次の対戦で使う自分のモンスター
-    /// 【仮】今はランダム。捕まえたモンスターから選べるようにしたら、ここと leaveBattle() の選び直しを置き換える
-    private(set) var myMonster = Monster.all.randomElement()!
+    /// 次の対戦で使う自分のモンスター。保存先の「バトルに出すモンスター」（最初の選択画面や編成で決めたもの）
+    private(set) var myMonster: Monster
     /// 対戦中の相手のモンスター。マッチングするまでは nil
     private(set) var opponentMonster: Monster?
     private(set) var phase = Phase.lobby
@@ -130,14 +129,20 @@ final class BattleViewModel {
     private var nextNormalAttackAt = ContinuousClock.now
 
     private let service: any BattleService
+    private let collection: any MonsterCollection
     private var searchTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
     private var finishTask: Task<Void, Never>?
     /// 対戦をやめたときの片付け。次の相手探しは、これが終わってから始める
     private var leaveTask: Task<Void, Never>?
 
-    init(service: any BattleService) {
+    /// - Parameters:
+    ///   - service: 対戦相手とのやり取り
+    ///   - collection: 自分のモンスター（バトルに出すモンスター）を読む保存先
+    init(service: any BattleService, collection: any MonsterCollection) {
         self.service = service
+        self.collection = collection
+        myMonster = Self.loadMyMonster(from: collection)
     }
 
     var me: Fighter? { state?.fighters[Self.myID] }
@@ -223,10 +228,22 @@ final class BattleViewModel {
         }
     }
 
-    /// 結果を見終わったときに呼ぶ。ロビーに戻る。次の対戦では別のモンスターを使う
+    /// 結果を見終わったときに呼ぶ。ロビーに戻る
     func leaveBattle() {
         reset()
-        myMonster = Monster.all.randomElement()!
+        reloadMyMonster()
+    }
+
+    /// 画面が表示されたときに呼ぶ。編成でバトルに出すモンスターが変わっていたら、それに替える
+    /// 相手を探している間や対戦中は替えない（相手に送ったモンスターと食い違うため）
+    func reloadMyMonster() {
+        guard phase == .lobby else { return }
+        myMonster = Self.loadMyMonster(from: collection)
+    }
+
+    /// まだ決まっていなければ（最初の選択画面の前、プレビュー）ランダムに選ぶ
+    private static func loadMyMonster(from collection: any MonsterCollection) -> Monster {
+        collection.battleMonster ?? Monster.all.randomElement()!
     }
 
     /// チャンスを見せ、結果が出たら消す。当たりならフィーバーを始める

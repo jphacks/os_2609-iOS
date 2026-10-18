@@ -33,9 +33,10 @@ struct BattleView: View {
 
     /// - Parameters:
     ///   - service: 対戦相手とのやり取り。野生のモンスターと戦うときは、そのモンスターを渡した CPUBattleService
+    ///   - collection: 自分のモンスター（バトルに出すモンスター）を読む保存先
     ///   - wildBattle: 野生のモンスターとのバトルなら、その相手と終わったときに呼ぶ処理
-    init(service: any BattleService, wildBattle: WildBattle? = nil) {
-        _viewModel = State(initialValue: BattleViewModel(service: service))
+    init(service: any BattleService, collection: any MonsterCollection, wildBattle: WildBattle? = nil) {
+        _viewModel = State(initialValue: BattleViewModel(service: service, collection: collection))
         self.wildBattle = wildBattle
     }
 
@@ -44,7 +45,11 @@ struct BattleView: View {
             // 対戦中はタブバーを隠し、全画面で戦う（途中で別のタブに移れないようにもなる）
             // 野生のモンスターとのバトルは捕獲画面が隠しているので、ここでも隠したままにする（出すと食い違う）
             .toolbarVisibility(wildBattle == nil && viewModel.me == nil ? .automatic : .hidden, for: .tabBar)
-            .onAppear { isVisible = true }
+            .onAppear {
+                isVisible = true
+                // マルチバトルのタブは画面が残り続けるので、ほかの画面で選び直したモンスターをここで反映する
+                viewModel.reloadMyMonster()
+            }
             .onDisappear {
                 isVisible = false
                 // 別のタブに移ったら、相手を待つのをやめる（対戦中ならそのまま続ける）
@@ -94,5 +99,6 @@ struct BattleView: View {
 
 #Preview {
     // ダミーの相手。「バトルする」を押すと、少し待ってから CPU との対戦が始まる
-    BattleView(service: CPUBattleService())
+    // 保存先はメモリの中だけ。バトルに出すモンスターが決まっていないので、自分のモンスターはランダムになる
+    BattleView(service: CPUBattleService(), collection: SwiftDataMonsterCollection(inMemory: true))
 }
