@@ -10,6 +10,9 @@ protocol MonsterCollection {
     /// 捕まえたモンスターを保存する。同じ種類をすでに持っていれば、件数は増えない
     func add(_ monster: Monster)
 
+    /// 捕まえたモンスター。Monster.all と同じ順に並べる（図鑑や編成のマスの順）
+    var capturedMonsters: [Monster] { get }
+
     /// バトルに出すモンスター。まだ選んでいなければ nil
     var battleMonster: Monster? { get }
 

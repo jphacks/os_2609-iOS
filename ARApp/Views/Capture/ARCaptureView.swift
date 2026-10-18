@@ -96,7 +96,7 @@ struct ARCaptureView: View {
             .overlay {
                 switch viewModel.menuScreen {
                 case .book:
-                    MonsterBookView { viewModel.closeMenuScreen() }
+                    MonsterBookView(collection: collection) { viewModel.closeMenuScreen() }
                         .transition(.opacity)
                 case .team:
                     MonsterTeamView { viewModel.closeMenuScreen() }

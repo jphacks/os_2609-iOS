@@ -2,9 +2,6 @@
 //  SwiftDataMonsterCollection.swift
 //  ARApp
 //
-//  ⚠️ 開発用のログあり：add(_:) の「保存している種類の数」を出す print
-//  図鑑で保存した内容を見られるようになったら、その print と countForLog() を消す
-//
 
 import Foundation
 import SwiftData
@@ -23,7 +20,12 @@ final class SwiftDataMonsterCollection: MonsterCollection {
         // modelName は一意なので、同じ種類を入れると新しく増えずに上書きになる
         context.insert(CapturedMonsterRecord(modelName: monster.modelName))
         save()
-        print("【開発用】保存している種類の数: \(countForLog())")
+    }
+
+    var capturedMonsters: [Monster] {
+        let records = (try? context.fetch(FetchDescriptor<CapturedMonsterRecord>())) ?? []
+        let modelNames = Set(records.map(\.modelName))
+        return Monster.all.filter { modelNames.contains($0.modelName) }
     }
 
     var battleMonster: Monster? {
@@ -81,11 +83,6 @@ final class SwiftDataMonsterCollection: MonsterCollection {
         for suffix in ["", "-wal", "-shm"] {
             try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + suffix))
         }
-    }
-
-    /// 【開発用】ファイル先頭の説明を参照
-    private func countForLog() -> Int {
-        (try? context.fetchCount(FetchDescriptor<CapturedMonsterRecord>())) ?? 0
     }
 }
 
