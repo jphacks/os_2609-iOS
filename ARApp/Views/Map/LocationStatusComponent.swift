@@ -21,11 +21,17 @@ struct LocationStatusComponent: View {
         VStack(spacing: 4) {
             Text(viewModel.statusMessage)
                 .font(.headline)
-            if !viewModel.currentRSSI.isEmpty {
-                // 地点を登録するときに控える値
-                Text(rssiText)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+            // 地点を登録するときに控える、6台すべての RSSI。未受信は -100 と表示する
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 2),
+                alignment: .leading,
+                spacing: 4
+            ) {
+                ForEach(Location.beaconIDs, id: \.self) { beaconName in
+                    Text("\(beaconName) \(rssi(for: beaconName)) dBm")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(rssiColor(for: beaconName))
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -33,11 +39,12 @@ struct LocationStatusComponent: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 
-    private var rssiText: String {
-        Location.beaconIDs.compactMap { beaconName in
-            viewModel.currentRSSI[beaconName].map { "\(beaconName) \($0)" }
-        }
-        .joined(separator: ", ")
+    private func rssi(for beaconName: String) -> Int {
+        viewModel.currentRSSI[beaconName] ?? LocationViewModel.missingRSSI
+    }
+
+    private func rssiColor(for beaconName: String) -> Color {
+        rssi(for: beaconName) == LocationViewModel.missingRSSI ? .secondary : .primary
     }
 }
 
