@@ -43,8 +43,8 @@ extension Location {
             name: "1",
             iconPosition: MapPosition(x: 0.069, y: 0.136),
             fingerprint: [
-                "BeaconA": -65, "BeaconB": -91, "BeaconC": -55,
-                "BeaconD": -79, "BeaconE": -69, "BeaconF": -85,
+                "BeaconA": -54, "BeaconB": -88, "BeaconC": -54,
+                "BeaconD": -62, "BeaconE": -62, "BeaconF": -69,
             ]
         ),
         "checkpoint_2": Location(
@@ -52,8 +52,8 @@ extension Location {
             name: "2",
             iconPosition: MapPosition(x: 0.889, y: 0.132),
             fingerprint: [
-                "BeaconA": -75, "BeaconB": -74, "BeaconC": -62,
-                "BeaconD": -67, "BeaconE": -74, "BeaconF": -76,
+                "BeaconA": -64, "BeaconB": -75, "BeaconC": -58,
+                "BeaconD": -60, "BeaconE": -69, "BeaconF": -66,
             ]
         ),
         "checkpoint_3": Location(
@@ -61,8 +61,8 @@ extension Location {
             name: "3",
             iconPosition: MapPosition(x: 0.195, y: 0.372),
             fingerprint: [
-                "BeaconA": -70, "BeaconB": -87, "BeaconC": -47,
-                "BeaconD": -79, "BeaconE": -67, "BeaconF": -72,
+                "BeaconA": -62, "BeaconB": -87, "BeaconC": -52,
+                "BeaconD": -60, "BeaconE": -65, "BeaconF": -72,
             ]
         ),
         "checkpoint_4": Location(
@@ -70,8 +70,8 @@ extension Location {
             name: "4",
             iconPosition: MapPosition(x: 0.861, y: 0.362),
             fingerprint: [
-                "BeaconA": -70, "BeaconB": -87, "BeaconC": -62,
-                "BeaconD": -100, "BeaconE": -73, "BeaconF": -80,
+                "BeaconA": -66, "BeaconB": -87, "BeaconC": -53,
+                "BeaconD": -58, "BeaconE": -67, "BeaconF": -75,
             ]
         ),
         "checkpoint_5": Location(
@@ -79,8 +79,8 @@ extension Location {
             name: "5",
             iconPosition: MapPosition(x: 0.095, y: 0.941),
             fingerprint: [
-                "BeaconA": -73, "BeaconB": -95, "BeaconC": -61,
-                "BeaconD": -79, "BeaconE": -43, "BeaconF": -74,
+                "BeaconA": -67, "BeaconB": -94, "BeaconC": -60,
+                "BeaconD": -64, "BeaconE": -54, "BeaconF": -68,
             ]
         ),
         "checkpoint_6": Location(
@@ -88,8 +88,8 @@ extension Location {
             name: "6",
             iconPosition: MapPosition(x: 0.860, y: 0.963),
             fingerprint: [
-                "BeaconA": -71, "BeaconB": -94, "BeaconC": -60,
-                "BeaconD": -82, "BeaconE": -67, "BeaconF": -50,
+                "BeaconA": -68, "BeaconB": -86, "BeaconC": -65,
+                "BeaconD": -65, "BeaconE": -68, "BeaconF": -53,
             ]
         ),
         "checkpoint_7": Location(
@@ -106,8 +106,8 @@ extension Location {
             name: "8",
             iconPosition: MapPosition(x: 0.506, y: 0.321),
             fingerprint: [
-                "BeaconA": -61, "BeaconB": -87, "BeaconC": -62,
-                "BeaconD": -76, "BeaconE": -74, "BeaconF": -73,
+                "BeaconA": -69, "BeaconB": -90, "BeaconC": -61,
+                "BeaconD": -61, "BeaconE": -66, "BeaconF": -65,
             ]
         ),
     ]

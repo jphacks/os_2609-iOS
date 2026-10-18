@@ -18,7 +18,7 @@ struct IndoorMapComponent: View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack {
-                Image("map")
+                Image("map.png")
                     .resizable()
                     .scaledToFit()
                     .accessibilityLabel("会場マップ")
