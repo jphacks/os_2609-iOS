@@ -6,6 +6,7 @@
 //  図鑑で保存した内容を見られるようになったら、その print と countForLog() を消す
 //
 
+import Foundation
 import SwiftData
 
 /// 【モック】捕まえたモンスターと、バトルに出すモンスターを SwiftData で端末の中に保存する
@@ -31,8 +32,13 @@ final class SwiftDataMonsterCollection: MonsterCollection {
     }
 
     func setBattleMonster(_ monster: Monster) {
-        // 1 件だけ持つので、前に選んでいたものを消してから入れる
-        try? context.delete(model: BattleMonsterRecord.self)
+        // 1 件だけ持つので、前に選んでいたものを消してから入れる。消せなかったときに入れると 2 件になり、どちらが読まれるかわからなくなる
+        do {
+            try context.delete(model: BattleMonsterRecord.self)
+        } catch {
+            print("前に選んだモンスターを消せなかったので、選び直しを保存しません: \(error)")
+            return
+        }
         context.insert(BattleMonsterRecord(modelName: monster.modelName))
         save()
     }
@@ -45,15 +51,35 @@ final class SwiftDataMonsterCollection: MonsterCollection {
         }
     }
 
-    /// 端末に保存できないとき（保存する形を変えて、前のデータを読めなくなったときなど）は、
-    /// アプリが落ちないよう、メモリの中だけに保存する形に切り替える
+    /// 端末の保存先を開けないとき（保存する形を変えて、前のデータを読めなくなったときなど）は、保存先を消して作り直す
+    /// モックなので前のデータは消えてよい。メモリだけの保存のままにすると、起動のたびに最初のモンスター選びからになるため
+    /// 作り直しても開けないときだけ、アプリが落ちないよう、メモリの中だけに保存する形に切り替える
     private static func makeContainer(inMemory: Bool) -> ModelContainer {
         let schema = Schema([CapturedMonsterRecord.self, BattleMonsterRecord.self])
+        let inMemoryConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        if inMemory {
+            return try! ModelContainer(for: schema, configurations: inMemoryConfiguration)
+        }
+
+        let configuration = ModelConfiguration(schema: schema)
         do {
-            return try ModelContainer(for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: inMemory))
+            return try ModelContainer(for: schema, configurations: configuration)
+        } catch {
+            print("端末の保存先を開けないので、消して作り直します: \(error)")
+        }
+        removeStore(at: configuration.url)
+        do {
+            return try ModelContainer(for: schema, configurations: configuration)
         } catch {
             print("端末に保存できないので、メモリの中だけに保存します: \(error)")
-            return try! ModelContainer(for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+            return try! ModelContainer(for: schema, configurations: inMemoryConfiguration)
+        }
+    }
+
+    /// SwiftData（SQLite）の保存ファイルを消す。本体のほかに -wal と -shm のファイルがある
+    private static func removeStore(at url: URL) {
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + suffix))
         }
     }
 
