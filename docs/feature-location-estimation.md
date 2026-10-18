@@ -15,7 +15,7 @@ ESP32 が出す BLE ビーコンの電波強度（RSSI）から、屋内のど�
 |---|---|---|
 | `Models/Location.swift` | 追加 | 地点と、その地点で測った RSSI のパターン（フィンガープリント）。ビーコン名の並び順 `beaconNames` もここで決める |
 | `Services/BeaconScanner.swift` | 追加 | ビーコン受信の protocol。受信のたびに `onReceive(名前, RSSI)` を呼ぶ |
-| `Services/BLEBeaconScanner.swift` | 追加 | CoreBluetooth での実装。ESP32 の Service UUID を広告しているデバイスだけを受信する |
+| `Services/BLEBeaconScanner.swift` | 追加 | CoreBluetooth での実装。広告名が `BeaconA`〜`BeaconD` のデバイスだけを受信する |
 | `Services/DummyBeaconScanner.swift` | 追加 | ESP32 がないとき用。決まった RSSI に ±3 の揺れを足して 200ms ごとに流す |
 | `ViewModels/LocationViewModel.swift` | 追加 | 受信した RSSI から現在地を推定する |
 | `Views/LocationStatusView.swift` | 追加 | 推定した現在地と、元になった RSSI を表示する |
@@ -48,7 +48,7 @@ ESP32 が出す BLE ビーコンの電波強度（RSSI）から、屋内のど�
 
 ## 実機での確認手順
 
-1. ESP32 を 4 台用意し、`BeaconA`〜`BeaconD` という名前で、`BLEBeaconScanner.serviceUUID` と同じ Service UUID を広告させる。
+1. ESP32 を 4 台用意し、`BeaconA`〜`BeaconD` という名前で広告させる。
 2. 実機で起動し、Bluetooth の利用を許可する。
 3. AR 画面の下に「現在地：〇〇」と `RSSI -52, -67, ...` が出ることを確認する。
 4. 場所を移動して、数秒以内に現在地が切り替わることを確認する。

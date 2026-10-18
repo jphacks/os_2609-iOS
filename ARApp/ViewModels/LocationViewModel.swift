@@ -5,41 +5,86 @@
 
 import Foundation
 import Observation
+import CoreMotion
 
-/// ビーコンの RSSI から現在地を推定する
-/// 一定時間 RSSI を集めてはビーコンごとの中央値で推定し、集めた値を捨てて次を集め直す
-/// （前の測定と重ねないので、推定が前の場所に引きずられない）
+/// BLE によるチェックポイント推定の信頼度
+enum LocationConfidence {
+    case unavailable
+    case low
+    case medium
+    case high
+
+    var label: String {
+        switch self {
+        case .unavailable: "未測定"
+        case .low: "低"
+        case .medium: "中"
+        case .high: "高"
+        }
+    }
+}
+
+/// ビーコンの RSSI から、最寄りのチェックポイントを推定する
+/// RSSI は正確な座標には使わず、会場内の粗いエリア判定にだけ使う
 @Observable
 final class LocationViewModel {
-    /// 1 回の推定のために RSSI を集める時間（秒）。この間隔で推定し直す
-    static let measurementDuration: TimeInterval = 2
-    /// 期間内に 1 回も受信できなかったビーコンの RSSI（とても遠い扱い）
+    /// RSSI の中央値を取る時間窓（秒）
+    static let smoothingWindow: TimeInterval = 3
+    /// 画面上の推定を更新する間隔（秒）
+    static let updateInterval: TimeInterval = 0.5
+    /// この時間窓で受信できなかったビーコンの比較用 RSSI
     static let missingRSSI = -100
-    /// マップ上の位置を求めるときに使う、RSSI のパターンが近い地点の数
-    static let positionNeighborCount = 3
-
-    /// 推定した現在地。ビーコンを 1 台も受信できていない間は nil
+    /// 停止後、歩行中に採取した RSSI を使わずに再測定する時間（秒）
+    static let stationaryMeasurementDuration: TimeInterval = 3
+    /// 最後に動きを検出してから「停止」と見なすまでの時間（秒）
+    static let stationaryDelay: TimeInterval = 1.5
+    /// userAcceleration の大きさ（G）がこの値以上なら移動と判定する
+    static let movementAccelerationThreshold = 0.06
+    /// この回数だけ連続で動きを検出してから移動中に切り替える。手ぶれを除外する
+    static let consecutiveMotionSamplesRequired = 5
+    /// 現在地を確定後、多少の動きや電波の揺れで地点を切り替えない保持時間（秒）
+    static let locationHoldDuration: TimeInterval = 5
+    /// 推定した最寄りチェックポイント
     private(set) var currentLocation: Location?
-    /// マップに自分を表示する位置。地点と地点の間にいるときは、その間になる
-    /// ビーコンを 1 台も受信できていない間は nil
+    /// チェックポイントのアイコン座標。位置を補間しない
     private(set) var currentPosition: MapPosition?
-    /// 推定に使った各ビーコンの RSSI。並びは `Location.beaconNames` と同じ
-    /// 地点を登録するときは、その場所でこの値を控えて `Location.registered` に書く
-    /// 【開発用】LocationStatusComponent でしか使っていない。あの部品を消すときに一緒に消す
-    private(set) var currentRSSI: [Int] = []
+    /// 平滑化後のビーコン名ごとの RSSI
+    /// 【開発用】LocationStatusComponent でフィンガープリントを測るために使う
+    private(set) var currentRSSI: [String: Int] = [:]
+    /// もっとも強く受信したビーコン
+    private(set) var nearestBeacon: String?
+    /// 現在のチェックポイント推定の信頼度
+    private(set) var confidence: LocationConfidence = .unavailable
+    /// 加速度センサーから、現在ユーザーが移動中と判断されているか
+    private(set) var isMoving = false
+    /// 停止後の RSSI 平滑化を行っている途中か
+    private(set) var isPreparingEstimate = false
 
     var statusMessage: String {
-        if let currentLocation {
-            "現在地：\(currentLocation.name)"
-        } else {
-            "ビーコンを探しています…"
+        if isMoving {
+            return "移動中です。現在地を知る場合は止まってください"
         }
+        if isPreparingEstimate, !currentRSSI.isEmpty {
+            return "停止を確認しました。現在地を測定中…"
+        }
+        guard let currentLocation else { return "ビーコンを探しています…" }
+        return "推定地点：\(currentLocation.name)（信頼度：\(confidence.label)）"
     }
 
     private let scanner: any BeaconScanner
-    /// ビーコンごとの、今の測定で受信した RSSI
-    private var samples: [String: [Int]] = [:]
+    private let motionManager = CMMotionManager()
+    private let motionQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.arapp.location-motion"
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }()
+    private var samples: [String: [RSSISample]] = [:]
     private var updateTask: Task<Void, Never>?
+    private var lastMotionDetectedAt: Date?
+    private var stationaryMeasurementStartedAt: Date?
+    private var consecutiveMotionSampleCount = 0
+    private var locationConfirmedAt: Date?
 
     init(scanner: any BeaconScanner) {
         self.scanner = scanner
@@ -47,14 +92,16 @@ final class LocationViewModel {
 
     func start() {
         guard updateTask == nil else { return }
+        beginStationaryMeasurement()
         scanner.onReceive = { [weak self] beaconName, rssi in
             self?.record(beaconName: beaconName, rssi: rssi)
         }
         scanner.start()
+        startMotionDetection()
 
         updateTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(Self.measurementDuration))
+                try? await Task.sleep(for: .seconds(Self.updateInterval))
                 guard let self, !Task.isCancelled else { return }
                 self.updateEstimate()
             }
@@ -64,71 +111,180 @@ final class LocationViewModel {
     func stop() {
         scanner.stop()
         scanner.onReceive = nil
+        motionManager.stopDeviceMotionUpdates()
         updateTask?.cancel()
         updateTask = nil
         samples = [:]
+        lastMotionDetectedAt = nil
+        stationaryMeasurementStartedAt = nil
+        consecutiveMotionSampleCount = 0
+        locationConfirmedAt = nil
+        isMoving = false
+        isPreparingEstimate = false
+        resetEstimate()
     }
 
-    /// ビーコンを受信するたびに呼ばれる。対象のビーコンだけ記録する
+    /// ビーコンを受信するたびに、時間付きで記録する
     private func record(beaconName: String, rssi: Int) {
-        guard Location.beaconNames.contains(beaconName) else { return }
-        samples[beaconName, default: []].append(rssi)
+        // 歩行中の電波強度は推定に混ぜない。停止後に新たに採取した値だけを使う
+        guard !isMoving, Location.beaconIDs.contains(beaconName) else { return }
+        samples[beaconName, default: []].append(RSSISample(value: rssi, receivedAt: .now))
     }
 
-    /// この `measurementDuration` 秒に集めた RSSI から現在地を推定し直し、次の測定のために集めた値を捨てる
+    /// 時間窓に残る RSSI の中央値から、最寄りチェックポイントと信頼度を更新する
     private func updateEstimate() {
-        defer { samples = [:] }
+        updateMovementState()
+        guard !isMoving else { return }
 
-        // 1 台も受信できていないときは、どの地点とも言えない
-        guard samples.values.contains(where: { !$0.isEmpty }) else {
-            currentRSSI = []
-            currentLocation = nil
-            currentPosition = nil
+        let now = Date.now
+        let cutoff = now.addingTimeInterval(-Self.smoothingWindow)
+        samples = samples.reduce(into: [:]) { kept, entry in
+            let recent = entry.value.filter { $0.receivedAt >= cutoff }
+            if !recent.isEmpty {
+                kept[entry.key] = recent
+            }
+        }
+
+        currentRSSI = Dictionary(uniqueKeysWithValues: samples.compactMap { beaconName, values in
+            Self.median(values.map(\.value)).map { (beaconName, $0) }
+        })
+
+        guard let stationaryMeasurementStartedAt,
+              now.timeIntervalSince(stationaryMeasurementStartedAt) >= Self.stationaryMeasurementDuration
+        else {
+            return
+        }
+        isPreparingEstimate = false
+
+        guard !currentRSSI.isEmpty else {
+            resetEstimate()
             return
         }
 
-        // ビーコンごとに中央値を取る。RSSI は揺れが大きいので、外れ値に強い中央値を使う
-        let rssi = Location.beaconNames.map { beaconName in
-            Self.median(samples[beaconName] ?? []) ?? Self.missingRSSI
+        nearestBeacon = currentRSSI.max { $0.value < $1.value }?.key
+
+        let candidates = Location.registered.compactMap { checkpoint -> Candidate? in
+            let errors = checkpoint.fingerprint.compactMap { beaconName, expectedRSSI -> Double? in
+                guard Location.beaconIDs.contains(beaconName) else { return nil }
+                let observedRSSI = currentRSSI[beaconName] ?? Self.missingRSSI
+                return abs(Double(expectedRSSI - observedRSSI))
+            }
+            guard !errors.isEmpty else { return nil }
+            return Candidate(location: checkpoint, meanAbsoluteError: errors.reduce(0, +) / Double(errors.count))
         }
-        currentRSSI = rssi
+        .sorted { $0.meanAbsoluteError < $1.meanAbsoluteError }
 
-        // RSSI のパターンが一番似ている（距離が一番小さい）地点を現在地とする
-        currentLocation = Location.registered.min {
-            Self.distance($0.fingerprint, rssi) < Self.distance($1.fingerprint, rssi)
+        guard let best = candidates.first else {
+            resetEstimate()
+            return
         }
-        currentPosition = Self.weightedPosition(rssi: rssi)
-    }
 
-    /// 重み付き k 近傍法でマップ上の位置を求める
-    /// RSSI のパターンが近い上位 `positionNeighborCount` 地点の位置を、パターンが近いほど重くして平均する
-    private static func weightedPosition(rssi: [Int]) -> MapPosition? {
-        let neighbors = Location.registered
-            .map { (position: $0.position, distance: distance($0.fingerprint, rssi)) }
-            .sorted { $0.distance < $1.distance }
-            .prefix(positionNeighborCount)
+        let nextBestError = candidates.dropFirst().first?.meanAbsoluteError ?? .infinity
+        // 現在地を表示した直後は、RSSIの小さな揺れで別の地点へ飛ばさない
+        if currentLocation?.id != best.location.id, isHoldingCurrentLocation {
+            return
+        }
 
-        // 距離の 2 乗の逆数で重み付けし、ある地点に立っているときは点がほぼその地点に乗るようにする
-        // （1 乗だと他の地点にも引っ張られ、地点の上に立っていても点がずれる）
-        // 距離が 0 でも割れるように 1 を足す
-        let weighted = neighbors.map { (position: $0.position, weight: 1 / pow($0.distance + 1, 2)) }
-        let totalWeight = weighted.reduce(0) { $0 + $1.weight }
-        guard totalWeight > 0 else { return nil }
-
-        return MapPosition(
-            x: weighted.reduce(0) { $0 + $1.position.x * $1.weight } / totalWeight,
-            y: weighted.reduce(0) { $0 + $1.position.y * $1.weight } / totalWeight
+        let locationChanged = currentLocation?.id != best.location.id
+        currentLocation = best.location
+        currentPosition = best.location.iconPosition
+        if locationChanged {
+            locationConfirmedAt = now
+        }
+        confidence = Self.confidence(
+            meanAbsoluteError: best.meanAbsoluteError,
+            margin: nextBestError - best.meanAbsoluteError,
+            receivedBeaconCount: currentRSSI.count
         )
     }
 
-    /// RSSI の配列どうしのユークリッド距離。小さいほどパターンが似ている
-    /// （メートル単位の距離ではない）
-    private static func distance(_ a: [Int], _ b: [Int]) -> Double {
-        let squaredSum = zip(a, b).reduce(0.0) { sum, pair in
-            let difference = Double(pair.0 - pair.1)
-            return sum + difference * difference
+    /// 端末の加速度から歩行・端末移動を検出する
+    private func startMotionDetection() {
+        guard motionManager.isDeviceMotionAvailable else { return }
+
+        motionManager.deviceMotionUpdateInterval = 0.1
+        motionManager.startDeviceMotionUpdates(to: motionQueue) { [weak self] motion, error in
+            guard error == nil, let acceleration = motion?.userAcceleration else { return }
+            let magnitude = sqrt(
+                acceleration.x * acceleration.x
+                    + acceleration.y * acceleration.y
+                    + acceleration.z * acceleration.z
+            )
+
+            Task { @MainActor [weak self] in
+                self?.recordMotionAcceleration(magnitude)
+            }
         }
-        return squaredSum.squareRoot()
+    }
+
+    /// 連続した加速度を受け取った時点で推定を無効化する。単発の手ぶれは無視する
+    private func recordMotionAcceleration(_ magnitude: Double) {
+        guard magnitude >= Self.movementAccelerationThreshold else {
+            consecutiveMotionSampleCount = 0
+            return
+        }
+
+        consecutiveMotionSampleCount += 1
+        guard consecutiveMotionSampleCount >= Self.consecutiveMotionSamplesRequired else { return }
+
+        // 現在地を確定した直後は、少し端末が動いても表示を保持する
+        guard !isHoldingCurrentLocation else { return }
+        lastMotionDetectedAt = .now
+        guard !isMoving else { return }
+
+        isMoving = true
+        stationaryMeasurementStartedAt = nil
+        isPreparingEstimate = false
+        locationConfirmedAt = nil
+        samples = [:]
+        resetEstimate()
+    }
+
+    /// 一定時間動きがなければ、停止後の RSSI を改めて集め始める
+    private func updateMovementState() {
+        guard isMoving,
+              let lastMotionDetectedAt,
+              Date.now.timeIntervalSince(lastMotionDetectedAt) >= Self.stationaryDelay
+        else {
+            return
+        }
+
+        isMoving = false
+        consecutiveMotionSampleCount = 0
+        beginStationaryMeasurement()
+    }
+
+    private func beginStationaryMeasurement() {
+        samples = [:]
+        stationaryMeasurementStartedAt = .now
+        isPreparingEstimate = true
+        resetEstimate()
+    }
+
+    private func resetEstimate() {
+        currentRSSI = [:]
+        currentLocation = nil
+        currentPosition = nil
+        nearestBeacon = nil
+        confidence = .unavailable
+        locationConfirmedAt = nil
+    }
+
+    private var isHoldingCurrentLocation: Bool {
+        guard let locationConfirmedAt else { return false }
+        return Date.now.timeIntervalSince(locationConfirmedAt) < Self.locationHoldDuration
+    }
+
+    /// 誤差が小さく、次点との差が大きく、2台以上を受信できているほど信頼度を上げる
+    private static func confidence(
+        meanAbsoluteError: Double,
+        margin: Double,
+        receivedBeaconCount: Int
+    ) -> LocationConfidence {
+        guard receivedBeaconCount >= 2 else { return .low }
+        if meanAbsoluteError <= 8, margin >= 4 { return .high }
+        if meanAbsoluteError <= 15, margin >= 2 { return .medium }
+        return .low
     }
 
     private static func median(_ values: [Int]) -> Int? {
@@ -139,4 +295,14 @@ final class LocationViewModel {
             ? (sorted[middle - 1] + sorted[middle]) / 2
             : sorted[middle]
     }
+}
+
+private struct RSSISample {
+    let value: Int
+    let receivedAt: Date
+}
+
+private struct Candidate {
+    let location: Location
+    let meanAbsoluteError: Double
 }

@@ -13,21 +13,51 @@ struct MapView: View {
         VStack(spacing: 16) {
             Text(locationViewModel.statusMessage)
                 .font(.headline)
+                .foregroundStyle(locationViewModel.isMoving ? .orange : .primary)
 
             IndoorMapComponent(
                 locations: Location.registered,
                 currentLocation: locationViewModel.currentLocation,
-                currentPosition: locationViewModel.currentPosition
+                currentPosition: locationViewModel.currentPosition,
+                confidence: locationViewModel.confidence
             )
+
+            LocationSignalComponent(viewModel: locationViewModel)
         }
         .padding()
     }
 }
 
-#Preview("ブースB") {
-    // ブースBのパターンを流すダミー。1 秒ほどで現在地が「ブースB」になる
-    let boothB = Location.registered.first { $0.id == "booth_b" }!
-    let viewModel = LocationViewModel(scanner: DummyBeaconScanner(location: boothB))
+/// 最寄りビーコンと推定の確からしさを表示する
+private struct LocationSignalComponent: View {
+    let viewModel: LocationViewModel
+
+    var body: some View {
+        HStack {
+            Label(
+                viewModel.isMoving ? "停止後に位置を測定します" : (viewModel.nearestBeacon ?? "ビーコン未検出"),
+                systemImage: viewModel.isMoving ? "figure.walk" : "dot.radiowaves.left.and.right"
+            )
+            Spacer()
+            Text("信頼度：\(viewModel.confidence.label)")
+                .foregroundStyle(confidenceColor)
+        }
+        .font(.subheadline)
+    }
+
+    private var confidenceColor: Color {
+        switch viewModel.confidence {
+        case .high: .blue
+        case .medium: .orange
+        case .low, .unavailable: .secondary
+        }
+    }
+}
+
+#Preview("地点2") {
+    // 地点2のパターンを流すダミー。1 秒ほどで現在地が「2」になる
+    let point2 = Location.registered.first { $0.id == "checkpoint_2" }!
+    let viewModel = LocationViewModel(scanner: DummyBeaconScanner(location: point2))
     MapView(locationViewModel: viewModel)
         .onAppear { viewModel.start() }
 }
