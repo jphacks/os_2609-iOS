@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// 屋内マップ本体。地点と、プレイヤーの現在地を描く
 /// 位置は `MapPosition`（0〜1 の割合）を、実際の表示サイズに掛けて求める
@@ -18,7 +19,7 @@ struct IndoorMapComponent: View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack {
-                Image("map.png")
+                mapImage
                     .resizable()
                     .scaledToFit()
                     .accessibilityLabel("会場マップ")
@@ -47,6 +48,18 @@ struct IndoorMapComponent: View {
 
     private func point(for position: MapPosition, in size: CGSize) -> CGPoint {
         CGPoint(x: position.x * size.width, y: position.y * size.height)
+    }
+
+    /// Assets catalog ではなく、Git 管理下の Resources/map.png をそのまま読む。
+    private var mapImage: Image {
+        guard
+            let url = Bundle.main.url(forResource: "map", withExtension: "png"),
+            let image = UIImage(contentsOfFile: url.path)
+        else {
+            return Image(systemName: "map")
+        }
+
+        return Image(uiImage: image)
     }
 
     private func color(for confidence: LocationConfidence) -> Color {
