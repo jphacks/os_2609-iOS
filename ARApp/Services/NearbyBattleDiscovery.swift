@@ -4,9 +4,9 @@
 //
 
 import CoreBluetooth
-import CryptoKit
 import Foundation
 import Observation
+import Supabase
 
 /// 近くで対戦受付中の端末と、1 回だけ使う対戦トークンを共有する。
 /// 対戦内容は BLE では送らず、既存の Supabase 通信を使う。
@@ -25,8 +25,20 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     /// 相互認識済みで、ユーザー確認を待っている相手
     private(set) var pendingCandidate: NearbyBattleCandidate?
 
-    /// 端末固定 ID は使わず、アプリを起動するたびに作るランダム値
-    private let sessionID = UUID()
+    /// 端末固定 ID は使わず、受付を開始するたびに作るランダム値
+    private var sessionID = UUID()
+    private(set) var readyToken: UUID?
+    private(set) var isWaitingForConsent = false
+    private(set) var statusMessage: String?
+    var isPairingConfigured: Bool { pairingClient != nil }
+    private var reservedToken: UUID?
+    private var wantsToAccept = false
+    private var remoteSessions: Set<UUID> = []
+    private var pairingTask: Task<Void, Never>?
+    @ObservationIgnored private let pairingClient: SupabaseClient? = {
+        guard SupabaseConfig.isConfigured, let url = URL(string: SupabaseConfig.url) else { return nil }
+        return SupabaseClient(supabaseURL: url, supabaseKey: SupabaseConfig.anonKey)
+    }()
     private var centralManager: CBCentralManager!
     private var peripheralManager: CBPeripheralManager!
     private var isPublishingService = false
@@ -60,31 +72,103 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     }
 
     func setAccepting(_ accepting: Bool) {
+        guard accepting != isAccepting else { return }
         isAccepting = accepting
         pendingCandidate = nil
+        reservedToken = nil
+        wantsToAccept = false
+        isWaitingForConsent = false
+        remoteSessions = []
         if accepting {
+            guard let client = pairingClient else {
+                isAccepting = false
+                statusMessage = "対戦の接続設定がありません"
+                return
+            }
+            sessionID = UUID() // 受付の世代を分け、以前の通知・通信結果を引き継がない
+            readyToken = nil
+            statusMessage = nil
+            startPairing(client: client, session: sessionID)
             startDiscoveryIfPossible()
         } else {
+            pairingTask?.cancel()
+            pairingTask = nil
             stopTransport()
         }
     }
 
-    /// マップ画面が前面から外れたときに呼ぶ。バックグラウンドでは広告・スキャンしない。
     func stopForInactiveMap() {
         setAccepting(false)
     }
 
-    /// 確認ポップアップで「対戦する」を選んだとき、同じ相手だけに一致するトークンを返す。
-    func confirmCandidate() -> UUID? {
-        let token = pendingCandidate?.pairingToken
-        setAccepting(false)
-        return token
+    /// 自分の承諾だけでは開始しない。双方の承諾をサーバーで確認する。
+    func confirmCandidate() {
+        guard pendingCandidate != nil else { return }
+        pendingCandidate = nil
+        wantsToAccept = true
+        isWaitingForConsent = true
     }
 
     func dismissCandidate() {
-        pendingCandidate = nil
-        stopTransport()
-        startDiscoveryIfPossible()
+        statusMessage = "対戦を辞退しました。受付をオンにすると再び探します"
+        setAccepting(false)
+    }
+
+    private func startPairing(client: SupabaseClient, session: UUID) {
+        pairingTask = Task { [weak self] in
+            // RPC 完了後にも停止を送る。停止と処理中の offer が前後しても予約を残さない。
+            defer {
+                Task {
+                    _ = try? await Self.pair(client: client, session: session, action: "stop")
+                }
+            }
+            do {
+                while !Task.isCancelled {
+                    guard let self, isAccepting, sessionID == session else { return }
+                    let peer = reservedToken == nil ? remoteSessions.first : nil
+                    if let peer { remoteSessions.remove(peer) }
+                    let action = wantsToAccept ? "accept" : (peer == nil ? "poll" : "offer")
+                    let token = reservedToken
+                    // キャンセルで予約の応答を失わないよう、通信自体は最後まで待つ。
+                    let rows = try await Task {
+                        try await Self.pair(client: client, session: session, action: action, peer: peer, token: token)
+                    }.value
+                    guard !Task.isCancelled, isAccepting, sessionID == session else { return }
+                    if let row = rows.first {
+                        reservedToken = row.id
+                        stopTransport()
+                        switch row.status {
+                        case "pending":
+                            if !isWaitingForConsent {
+                                pendingCandidate = NearbyBattleCandidate(pairingToken: row.id)
+                            }
+                        case "ready":
+                            readyToken = row.id
+                            setAccepting(false)
+                            return
+                        default:
+                            statusMessage = row.status == "expired"
+                                ? "確認の時間が切れました。受付をオンにして再度お試しください"
+                                : "相手が対戦を辞退したか、受付を終了しました"
+                            setAccepting(false)
+                            return
+                        }
+                    }
+                    try await Task.sleep(for: .milliseconds(500))
+                }
+            } catch {
+                guard !Task.isCancelled, let self, sessionID == session else { return }
+                statusMessage = "対戦相手との確認に失敗しました。受付をオンにして再度お試しください"
+                setAccepting(false)
+            }
+        }
+    }
+
+    private static func pair(client: SupabaseClient, session: UUID, action: String,
+                             peer: UUID? = nil, token: UUID? = nil) async throws -> [NearbyPairRow] {
+        try await client.rpc("nearby_pair", params: NearbyPairParams(
+            session: session, action: action, peer: peer, token: token
+        )).execute().value
     }
 
     // MARK: - Peripheral / advertising
@@ -107,8 +191,8 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
         }
 
         for request in requests {
-            // 複数端末が同時に書き込んできても、最初の 1 台以外は受理しない。
-            guard pendingCandidate == nil,
+            // 確保前は候補 ID を収集する。複数候補の競合はサーバーで解決する。
+            guard reservedToken == nil,
                   request.characteristic.uuid == Self.handshakeCharacteristicUUID,
                   request.offset == 0,
                   let value = request.value,
@@ -132,7 +216,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
 
     private func startDiscoveryIfPossible() {
         guard isAccepting,
-              pendingCandidate == nil,
+              reservedToken == nil,
               centralManager.state == .poweredOn,
               peripheralManager.state == .poweredOn
         else { return }
@@ -165,6 +249,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
         selectionTask = nil
         writableCharacteristics = [:]
         if let activePeripheral {
+            activePeripheral.delegate = nil
             centralManager.cancelPeripheralConnection(activePeripheral)
         }
         activePeripheral = nil
@@ -193,7 +278,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
         rssi RSSI: NSNumber
     ) {
         guard isAccepting,
-              pendingCandidate == nil
+              reservedToken == nil
         else { return }
 
         discoveredPeripherals[peripheral.identifier] = DiscoveredPeripheral(
@@ -204,6 +289,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard isCurrent(peripheral) else { abandon(peripheral); return }
         peripheral.delegate = self
         peripheral.discoverServices([Self.serviceUUID])
     }
@@ -218,7 +304,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard error == nil,
+        guard isCurrent(peripheral), error == nil,
               let service = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID })
         else {
             abandon(peripheral)
@@ -228,7 +314,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        guard error == nil,
+        guard isCurrent(peripheral), error == nil,
               let characteristic = service.characteristics?.first(where: { $0.uuid == Self.handshakeCharacteristicUUID })
         else {
             abandon(peripheral)
@@ -240,7 +326,7 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        guard error == nil,
+        guard isCurrent(peripheral), error == nil,
               characteristic.uuid == Self.handshakeCharacteristicUUID,
               characteristic.isNotifying
         else {
@@ -256,29 +342,29 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard error == nil,
+        guard isCurrent(peripheral), error == nil,
               characteristic.uuid == Self.handshakeCharacteristicUUID,
+              writableCharacteristics[peripheral.identifier] === characteristic,
               let value = characteristic.value,
               let remoteSessionID = UUID(uuidString: String(decoding: value, as: UTF8.self))
         else { return }
         receive(remoteSessionID: remoteSessionID)
     }
 
+    private func isCurrent(_ peripheral: CBPeripheral) -> Bool {
+        isAccepting && reservedToken == nil && activePeripheral === peripheral
+    }
+
     private func receive(remoteSessionID: UUID) {
-        guard remoteSessionID != sessionID, pendingCandidate == nil else { return }
-        let token = Self.pairingToken(between: sessionID, and: remoteSessionID)
-        pendingCandidate = NearbyBattleCandidate(pairingToken: token)
-        // 1 人を見つけたら他の端末と同時に対戦候補にならないよう止める
-        selectionTask?.cancel()
-        selectionTask = nil
-        centralManager.stopScan()
-        peripheralManager.stopAdvertising()
+        guard isAccepting, reservedToken == nil, remoteSessionID != sessionID else { return }
+        // BLE の受信だけでは確定しない。サーバーが両端末を排他的に確保する。
+        remoteSessions.insert(remoteSessionID)
     }
 
     /// RSSI が強い 1 台だけに接続する。6〜7 台を同時に見つけても接続競合を起こさない。
     private func connectToNextPeripheralIfPossible() {
         guard isAccepting,
-              pendingCandidate == nil,
+              reservedToken == nil,
               activePeripheral == nil,
               let next = discoveredPeripherals.values.max(by: { $0.rssi < $1.rssi })
         else { return }
@@ -315,20 +401,9 @@ final class NearbyBattleDiscovery: NSObject, CBCentralManagerDelegate, CBPeriphe
     private func updateBluetoothReadiness() {
         isBluetoothReady = centralManager.state == .poweredOn && peripheralManager.state == .poweredOn
     }
-
-    private static func pairingToken(between first: UUID, and second: UUID) -> UUID {
-        let data = Data([first.uuidString, second.uuidString].sorted().joined(separator: ":").utf8)
-        let digest = Array(SHA256.hash(data: data))
-        return UUID(uuid: (
-            digest[0], digest[1], digest[2], digest[3],
-            digest[4], digest[5], digest[6], digest[7],
-            digest[8], digest[9], digest[10], digest[11],
-            digest[12], digest[13], digest[14], digest[15]
-        ))
-    }
 }
 
-/// 同じ BLE ハンドシェイクから、両端末で同じ値になる対戦候補
+/// サーバーが両端末を確保して発行した対戦候補
 struct NearbyBattleCandidate: Identifiable {
     let pairingToken: UUID
     var id: UUID { pairingToken }
@@ -337,4 +412,23 @@ struct NearbyBattleCandidate: Identifiable {
 private struct DiscoveredPeripheral {
     let peripheral: CBPeripheral
     let rssi: Int
+}
+
+nonisolated private struct NearbyPairRow: Decodable, Sendable {
+    let id: UUID
+    let status: String
+}
+
+nonisolated private struct NearbyPairParams: Encodable, Sendable {
+    let session: UUID
+    let action: String
+    let peer: UUID?
+    let token: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case session = "p_session"
+        case action = "p_action"
+        case peer = "p_peer"
+        case token = "p_token"
+    }
 }

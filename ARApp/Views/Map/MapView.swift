@@ -31,9 +31,12 @@ struct MapView: View {
             nearbyBattleDiscovery.stopForInactiveMap()
         }
         .onChange(of: scenePhase) {
-            if scenePhase != .active {
+            if scenePhase == .background {
                 nearbyBattleDiscovery.stopForInactiveMap()
             }
+        }
+        .onChange(of: nearbyBattleDiscovery.readyToken) {
+            if let token = nearbyBattleDiscovery.readyToken { onStartBattle(token) }
         }
         .alert(
             "近くに対戦相手がいます",
@@ -45,8 +48,7 @@ struct MapView: View {
             )
         ) {
             Button("対戦する") {
-                guard let pairingToken = nearbyBattleDiscovery.confirmCandidate() else { return }
-                onStartBattle(pairingToken)
+                nearbyBattleDiscovery.confirmCandidate()
             }
             Button("今回はやめる", role: .cancel) {
                 nearbyBattleDiscovery.dismissCandidate()
@@ -71,7 +73,7 @@ private struct NearbyBattleReceptionComponent: View {
             ) {
                 Label("対戦受付", systemImage: "bolt.horizontal.circle")
             }
-            .disabled(!discovery.isBluetoothReady && !discovery.isAccepting)
+            .disabled((!discovery.isBluetoothReady || !discovery.isPairingConfigured) && !discovery.isAccepting)
 
             Text(statusText)
                 .font(.footnote)
@@ -82,6 +84,9 @@ private struct NearbyBattleReceptionComponent: View {
     }
 
     private var statusText: String {
+        if let message = discovery.statusMessage { return message }
+        if !discovery.isPairingConfigured { return "対戦の接続設定がありません" }
+        if discovery.isWaitingForConsent { return "相手の承諾を待っています（最大30秒）" }
         if !discovery.isBluetoothReady {
             return "Bluetoothをオンにすると対戦受付を利用できます"
         }

@@ -124,7 +124,10 @@ final class SupabaseBattleService: BattleService {
 
         // Realtime を取りこぼしたときのために、ときどきデータベースも直接見る（購読を始める前に入ってきた場合もここで気づく）
         var nextFetch = Date.now
+        let matchingDeadline = Date.now.addingTimeInterval(30)
         while opponentMonsterName == nil {
+            // 双方承諾後に相手が終了した場合も、専用部屋で待ち続けない。
+            guard Date.now < matchingDeadline else { throw ServiceError.opponentLeft }
             if Date.now >= nextFetch {
                 // 通信が一瞬切れても失敗にせず、次の確認を待つ
                 if let battle = try? await fetchBattle(id: row.id) {
