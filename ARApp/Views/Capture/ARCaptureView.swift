@@ -99,7 +99,7 @@ struct ARCaptureView: View {
                     MonsterBookView(collection: collection) { viewModel.closeMenuScreen() }
                         .transition(.opacity)
                 case .team:
-                    MonsterTeamView { viewModel.closeMenuScreen() }
+                    MonsterTeamView(collection: collection) { viewModel.closeMenuScreen() }
                         .transition(.opacity)
                 case nil:
                     EmptyView()
