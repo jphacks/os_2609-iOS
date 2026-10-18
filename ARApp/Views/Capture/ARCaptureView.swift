@@ -34,6 +34,8 @@ struct ARCaptureView: View {
     /// 位置の基準と見つけた床が残るので、バトルでは床を探し直さず、相手を野生のモンスターがいた場所にそのまま置ける
     /// バトルから戻ったときも、捕獲の ARView は床をすぐに見つけ直せる
     @State private var arSession = ARSession()
+    /// メニューボタンを押して、「図鑑」「編成」のボタンを出しているか
+    @State private var isMenuExpanded = false
     /// 捕まえたモンスターの保存先。野生のモンスターとのバトルにも、自分のモンスターを読むために渡す
     private let collection: any MonsterCollection
 
@@ -66,10 +68,44 @@ struct ARCaptureView: View {
             .sensoryFeedback(.warning, trigger: viewModel.wildMonster?.id) { (_: UUID?, id: UUID?) -> Bool in
                 id != nil
             }
-            .overlay(alignment: .bottom) {
-                LocationStatusComponent(viewModel: locationViewModel)
-                    .padding(.bottom, 8)
+            // メニューを開いている間は周りを暗くし、タップしたら閉じる（後ろのモンスターはタップできない）
+            .overlay {
+                if isMenuExpanded {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(duration: 0.35, bounce: 0.45)) { isMenuExpanded = false }
+                        }
+                        .transition(.opacity)
+                }
             }
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 12) {
+                    if isTabBarShown {
+                        MonsterMenuComponent(
+                            isExpanded: $isMenuExpanded,
+                            onOpenBook: { viewModel.openMenuScreen(.book) },
+                            onOpenTeam: { viewModel.openMenuScreen(.team) }
+                        )
+                    }
+                    LocationStatusComponent(viewModel: locationViewModel)
+                }
+                .padding(.bottom, 8)
+            }
+            // 図鑑・編成も詳細画面と同じく重ねるだけにして、ARView は後ろで動かし続ける（理由は下の詳細画面を参照）
+            .overlay {
+                switch viewModel.menuScreen {
+                case .book:
+                    MonsterBookView(collection: collection) { viewModel.closeMenuScreen() }
+                        .transition(.opacity)
+                case .team:
+                    MonsterTeamView(collection: collection) { viewModel.closeMenuScreen() }
+                        .transition(.opacity)
+                case nil:
+                    EmptyView()
+                }
+            }
+            .animation(.easeInOut, value: viewModel.menuScreen)
             // バトルも fullScreenCover で開かず、重ねる（理由は下の詳細画面と同じ）
             // 捕獲の ARView を外し終わってから出す。バトルが終わったら battleMonster が nil になり、すぐに外れる
             .overlay {
@@ -97,7 +133,7 @@ struct ARCaptureView: View {
                 }
             }
             .animation(.easeInOut, value: viewModel.detailMonster == nil)
-            // バトル・詳細画面を開いている間と切り替え中は、全画面に見えるようタブバーも隠す
+            // バトル・詳細画面・図鑑・編成を開いている間と切り替え中は、全画面に見えるようタブバーも隠す
             // 切り替え中に別のタブへ移ると、ARView の順番が崩れるため
             .toolbarVisibility(isTabBarShown ? .automatic : .hidden, for: .tabBar)
             // バトルが始まったら捕獲の ARView を外し、少し待ってからバトルを出す
@@ -129,6 +165,6 @@ struct ARCaptureView: View {
     }
 
     private var isTabBarShown: Bool {
-        arScreen == .capture && viewModel.battleMonster == nil && viewModel.detailMonster == nil
+        arScreen == .capture && viewModel.battleMonster == nil && viewModel.detailMonster == nil && viewModel.menuScreen == nil
     }
 }

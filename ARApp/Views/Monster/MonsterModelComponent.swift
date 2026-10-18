@@ -65,11 +65,7 @@ private struct MonsterModelSceneView: UIViewRepresentable {
         let scene = SCNScene()
         view.scene = scene
         scene.rootNode.addChildNode(context.coordinator.turntable)
-        if let model = MonsterSceneNode.make(from: monster, height: height) {
-            // 足元が原点なので、体の真ん中が画面の中心に来るように下げる
-            model.position.y -= height / 2
-            context.coordinator.turntable.addChildNode(model)
-        }
+        context.coordinator.show(monster, height: height)
 
         // 一番大きいモンスター（高さ 1.8m）でも画面に収まる距離から見る
         let camera = SCNNode()
@@ -81,13 +77,31 @@ private struct MonsterModelSceneView: UIViewRepresentable {
         return view
     }
 
-    /// 指で回した角度が変わるたびに呼ばれる
+    /// 指で回した角度や、出すモンスターが変わるたびに呼ばれる
+    /// バトルの対戦前の画面はタブに残り続けるので、編成で選び直すと、作り直されないままモンスターだけが変わる
     func updateUIView(_ view: SCNView, context: Context) {
+        context.coordinator.show(monster, height: height)
         context.coordinator.turntable.eulerAngles.y = Float(angle.radians)
     }
 
     final class Coordinator {
         /// モデルを乗せて回す台
         let turntable = SCNNode()
+        /// 今台に乗せているモデルの名前と高さ。変わったときだけ読み込み直す（USDZ の読み込みは重い）
+        private var shownModelName: String?
+        private var shownHeight: Float?
+
+        /// 台に乗せるモデルを、monster のモデルにする
+        func show(_ monster: Monster, height: Float) {
+            guard monster.modelName != shownModelName || height != shownHeight else { return }
+            shownModelName = monster.modelName
+            shownHeight = height
+            turntable.childNodes.forEach { $0.removeFromParentNode() }
+            if let model = MonsterSceneNode.make(from: monster, height: height) {
+                // 足元が原点なので、体の真ん中が画面の中心に来るように下げる
+                model.position.y -= height / 2
+                turntable.addChildNode(model)
+            }
+        }
     }
 }

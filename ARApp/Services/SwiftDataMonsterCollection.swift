@@ -2,9 +2,6 @@
 //  SwiftDataMonsterCollection.swift
 //  ARApp
 //
-//  ⚠️ 開発用のログあり：add(_:) の「保存している種類の数」を出す print
-//  図鑑で保存した内容を見られるようになったら、その print と countForLog() を消す
-//
 
 import Foundation
 import SwiftData
@@ -23,7 +20,12 @@ final class SwiftDataMonsterCollection: MonsterCollection {
         // modelName は一意なので、同じ種類を入れると新しく増えずに上書きになる
         context.insert(CapturedMonsterRecord(modelName: monster.modelName))
         save()
-        print("【開発用】保存している種類の数: \(countForLog())")
+    }
+
+    var capturedMonsters: [Monster] {
+        let records = (try? context.fetch(FetchDescriptor<CapturedMonsterRecord>())) ?? []
+        let modelNames = Set(records.map(\.modelName))
+        return Monster.all.filter { modelNames.contains($0.modelName) }
     }
 
     var battleMonster: Monster? {
@@ -31,23 +33,31 @@ final class SwiftDataMonsterCollection: MonsterCollection {
         return record.flatMap { Monster.named($0.modelName) }
     }
 
-    func setBattleMonster(_ monster: Monster) {
+    @discardableResult
+    func setBattleMonster(_ monster: Monster) -> Bool {
         // 1 件だけ持つので、前に選んでいたものを消してから入れる。消せなかったときに入れると 2 件になり、どちらが読まれるかわからなくなる
         do {
             try context.delete(model: BattleMonsterRecord.self)
         } catch {
             print("前に選んだモンスターを消せなかったので、選び直しを保存しません: \(error)")
-            return
+            context.rollback()
+            return false
         }
         context.insert(BattleMonsterRecord(modelName: monster.modelName))
-        save()
+        return save()
     }
 
-    private func save() {
+    /// 変更を端末に保存する。保存できなかったときは変更を取り消す
+    /// 取り消さないと、保存していない変更も読み出しで返ってきて、再起動したときだけ前の状態に戻る
+    @discardableResult
+    private func save() -> Bool {
         do {
             try context.save()
+            return true
         } catch {
             print("モンスターを保存できませんでした: \(error)")
+            context.rollback()
+            return false
         }
     }
 
@@ -81,11 +91,6 @@ final class SwiftDataMonsterCollection: MonsterCollection {
         for suffix in ["", "-wal", "-shm"] {
             try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + suffix))
         }
-    }
-
-    /// 【開発用】ファイル先頭の説明を参照
-    private func countForLog() -> Int {
-        (try? context.fetchCount(FetchDescriptor<CapturedMonsterRecord>())) ?? 0
     }
 }
 
