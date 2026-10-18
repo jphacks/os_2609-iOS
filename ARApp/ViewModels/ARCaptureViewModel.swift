@@ -12,6 +12,14 @@ import Observation
 /// モンスターはこの端末の中だけに出る（ほかのプレイヤーとは共有しない）
 @Observable
 final class ARCaptureViewModel {
+    /// メニューから開く画面
+    enum MenuScreen {
+        /// 図鑑
+        case book
+        /// 編成（バトルに出すモンスターを選ぶ）
+        case team
+    }
+
     /// 「現れた！」などのお知らせを表示しておく時間
     static let noticeDuration: Duration = .seconds(2)
     /// モンスターが出るまでに歩く距離（m）。出るたびにこの範囲から選び直す
@@ -32,6 +40,9 @@ final class ARCaptureViewModel {
     /// バトルしている野生のモンスターがいた場所（AR のワールド座標、足元）。バトル中でなければ nil
     /// バトルでも捕獲画面と同じ AR セッションを使うので、バトルの相手をこの場所にそのまま置ける
     private(set) var battleMonsterPosition: SIMD3<Float>?
+    /// メニューから開いている画面。開いていなければ nil
+    /// 開いている間も ARView は後ろで動かしたままにする（詳細画面と同じ）。モンスターは出さず、逃げるタイマーも止める
+    private(set) var menuScreen: MenuScreen?
     /// 次のモンスターが出るまでに、あと何 m 歩くか
     /// 歩くたびに変わるが、画面には出さないので View の更新のきっかけにしない
     @ObservationIgnored private var remainingWalkDistance = Float.random(in: spawnWalkDistanceRange)
@@ -81,9 +92,9 @@ final class ARCaptureViewModel {
     }
 
     /// 自分が床の上を歩いたときに ARSceneController から呼ばれる。distance は歩いた距離（m）
-    /// 決まった距離を歩くと、モンスターが出る。出ている間と、バトル・詳細画面を出している間は数えない
+    /// 決まった距離を歩くと、モンスターが出る。出ている間と、バトル・詳細画面・メニューの画面を出している間は数えない
     func walked(distance: Float) {
-        guard isFloorFound, wildMonster == nil, battleMonster == nil, detailMonster == nil else { return }
+        guard isFloorFound, wildMonster == nil, battleMonster == nil, detailMonster == nil, menuScreen == nil else { return }
         remainingWalkDistance -= distance
         guard remainingWalkDistance <= 0 else { return }
 
@@ -132,9 +143,25 @@ final class ARCaptureViewModel {
         detailMonster = nil
     }
 
+    /// メニューから図鑑や編成を開く。見ていない間に逃げないよう、逃げるタイマーを止める
+    func openMenuScreen(_ screen: MenuScreen) {
+        menuScreen = screen
+        escapeTask?.cancel()
+        escapeTask = nil
+    }
+
+    /// 図鑑や編成を閉じて AR に戻る。出現しているモンスターがいれば、逃げるまでの時間を数え直す
+    func closeMenuScreen() {
+        menuScreen = nil
+        if isFloorFound {
+            startEscapeTimer()
+        }
+    }
+
     /// 出現しているモンスターが、escapeDuration たつと逃げるようにする
+    /// メニューの画面を開いている間は数えない（閉じたときに数え直す）
     private func startEscapeTimer() {
-        guard let wild = wildMonster else { return }
+        guard let wild = wildMonster, menuScreen == nil else { return }
         escapeTask?.cancel()
         escapeTask = Task { [weak self] in
             try? await Task.sleep(for: Self.escapeDuration)
