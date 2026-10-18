@@ -22,7 +22,7 @@ struct BattleLobbyComponent: View {
                 .font(.headline)
 
             // ロビーでは SceneKit を使い、捕獲・対戦用の ARView と競合させない。
-            MonsterModelComponent(monster: myMonster, height: 2.4, facing: .radians(0.4))
+            BattleMonsterComponent(monster: myMonster, facing: 0.4)
                 .frame(width: 240, height: 240)
             Text(myMonster.name)
                 .font(.title3.bold())
