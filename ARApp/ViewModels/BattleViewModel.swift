@@ -188,6 +188,8 @@ final class BattleViewModel {
             // キャンセルと同時にマッチングが終わっていた場合に備えて、対戦からも抜ける
             await service.leave()
             phase = .lobby
+            // 片付けの間に画面が表示されると、そのときは読み直せない（ロビーではないため）ので、ここで読み直す
+            reloadMyMonster()
         }
     }
 
