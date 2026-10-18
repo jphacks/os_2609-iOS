@@ -16,17 +16,9 @@ struct ContentView: View {
     /// 現在地の推定はアプリ全体で 1 つだけ動かし、各画面で共有する
     @State private var locationViewModel = LocationViewModel(scanner: Self.makeScanner())
     @State private var battleService = Self.makeBattleService()
-    /// 捕まえたモンスターの保存先。図鑑や編成でも同じものを使うので、アプリ全体で 1 つだけ作る
-    @State private var monsterCollection: SwiftDataMonsterCollection
     @State private var selectedTab = AppTab.map
-    /// 最初にモンスターを選ぶ画面を出しているか。バトルに出すモンスターがまだ決まっていなければ、起動したときに出す
-    @State private var isChoosingStarter: Bool
-
-    init() {
-        let collection = SwiftDataMonsterCollection()
-        _monsterCollection = State(initialValue: collection)
-        _isChoosingStarter = State(initialValue: collection.battleMonster == nil)
-    }
+    /// 捕まえたモンスターの保存先（ARAppApp で 1 つだけ作ったもの）
+    let monsterCollection: any MonsterCollection
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -40,18 +32,10 @@ struct ContentView: View {
                 BattleView(service: battleService)
             }
         }
-        // 最初にモンスターを選ぶ画面は、タブの上に重ねて出す。決めたら捕獲タブ（AR）に移る
-        // 出している間はマップタブのままなので、捕獲画面の ARView は作られない（RealityKit の画面は 1 つだけにする）
-        .overlay {
-            if isChoosingStarter {
-                StarterMonsterView(collection: monsterCollection) {
-                    isChoosingStarter = false
-                    selectedTab = .capture
-                }
-                .transition(.opacity)
-            }
+        // 最初にモンスターを選ぶ画面を出している間はマップタブのままなので、捕獲画面の ARView は作られない
+        .starterMonsterSelection(collection: monsterCollection) {
+            selectedTab = .capture
         }
-        .animation(.easeInOut, value: isChoosingStarter)
         .onAppear {
             locationViewModel.start()
         }
@@ -82,5 +66,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(monsterCollection: SwiftDataMonsterCollection(inMemory: true))
 }
