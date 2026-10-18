@@ -34,9 +34,12 @@ struct ARCaptureView: View {
     /// 位置の基準と見つけた床が残るので、バトルでは床を探し直さず、相手を野生のモンスターがいた場所にそのまま置ける
     /// バトルから戻ったときも、捕獲の ARView は床をすぐに見つけ直せる
     @State private var arSession = ARSession()
+    /// 捕まえたモンスターの保存先。野生のモンスターとのバトルにも、自分のモンスターを読むために渡す
+    private let collection: any MonsterCollection
 
     init(locationViewModel: LocationViewModel, collection: any MonsterCollection) {
         self.locationViewModel = locationViewModel
+        self.collection = collection
         _viewModel = State(initialValue: ARCaptureViewModel(collection: collection))
     }
 
@@ -73,6 +76,7 @@ struct ARCaptureView: View {
                 if case .battle = arScreen, let wild = viewModel.battleMonster, let position = viewModel.battleMonsterPosition {
                     BattleView(
                         service: CPUBattleService(opponent: wild.monster),
+                        collection: collection,
                         wildBattle: BattleView.WildBattle(
                             monster: wild.monster,
                             arHandoff: ARHandoff(session: arSession, opponentPosition: position),
