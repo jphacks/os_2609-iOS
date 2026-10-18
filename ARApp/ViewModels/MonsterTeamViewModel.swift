@@ -22,11 +22,10 @@ final class MonsterTeamViewModel {
         battleMonster = collection.battleMonster
     }
 
-    /// バトルに出すモンスターを決めて、すぐに保存する
+    /// バトルに出すモンスターを決めて、すぐに保存する。保存できなかったときは前のモンスターのままにする
     func choose(_ monster: Monster) {
-        guard monster.modelName != battleMonster?.modelName else { return }
-        collection.setBattleMonster(monster)
-        // 保存できなかったときに画面と保存先が食い違わないよう、保存先から読み直す
-        battleMonster = collection.battleMonster
+        guard monster.modelName != battleMonster?.modelName,
+              collection.setBattleMonster(monster) else { return }
+        battleMonster = monster
     }
 }

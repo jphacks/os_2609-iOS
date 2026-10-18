@@ -17,5 +17,7 @@ protocol MonsterCollection {
     var battleMonster: Monster? { get }
 
     /// バトルに出すモンスターを決める（最初にモンスターを選んだとき、編成で選び直したとき）
-    func setBattleMonster(_ monster: Monster)
+    /// - Returns: 保存できたか。保存できなかったときは、前に選んでいたモンスターのまま
+    @discardableResult
+    func setBattleMonster(_ monster: Monster) -> Bool
 }

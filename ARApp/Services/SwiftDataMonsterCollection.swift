@@ -33,23 +33,31 @@ final class SwiftDataMonsterCollection: MonsterCollection {
         return record.flatMap { Monster.named($0.modelName) }
     }
 
-    func setBattleMonster(_ monster: Monster) {
+    @discardableResult
+    func setBattleMonster(_ monster: Monster) -> Bool {
         // 1 件だけ持つので、前に選んでいたものを消してから入れる。消せなかったときに入れると 2 件になり、どちらが読まれるかわからなくなる
         do {
             try context.delete(model: BattleMonsterRecord.self)
         } catch {
             print("前に選んだモンスターを消せなかったので、選び直しを保存しません: \(error)")
-            return
+            context.rollback()
+            return false
         }
         context.insert(BattleMonsterRecord(modelName: monster.modelName))
-        save()
+        return save()
     }
 
-    private func save() {
+    /// 変更を端末に保存する。保存できなかったときは変更を取り消す
+    /// 取り消さないと、保存していない変更も読み出しで返ってきて、再起動したときだけ前の状態に戻る
+    @discardableResult
+    private func save() -> Bool {
         do {
             try context.save()
+            return true
         } catch {
             print("モンスターを保存できませんでした: \(error)")
+            context.rollback()
+            return false
         }
     }
 
