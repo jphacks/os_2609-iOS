@@ -73,10 +73,12 @@ final class SupabaseBattleService: BattleService {
         client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey)
     }
 
-    func findOpponent(monster: Monster) async throws -> Monster {
+    func findOpponent(monster: Monster, pairingToken: UUID?) async throws -> Monster {
+        // CPU 対戦用のトークンなし呼び出しで、オンラインの部屋を作らない。
+        guard pairingToken != nil else { throw ServiceError.invalidData }
         await leave()
         do {
-            return try await joinAndWait(monster: monster)
+            return try await joinAndWait(monster: monster, pairingToken: pairingToken)
         } catch {
             // キャンセルされたり失敗したりしたら、作った部屋が相手待ちのまま残らないように片付ける
             // キャンセルされた Task の中で通信すると通信まで取り消されるので、別の Task で片付けて終わるのを待つ
@@ -86,10 +88,10 @@ final class SupabaseBattleService: BattleService {
     }
 
     /// join_battle で部屋に入り（または作り）、相手がそろうまで待つ
-    private func joinAndWait(monster: Monster) async throws -> Monster {
+    private func joinAndWait(monster: Monster, pairingToken: UUID?) async throws -> Monster {
         // 途中でキャンセルされても通信は最後まで行い、部屋の ID を受け取ってから片付けられるようにする
         // （通信ごと取り消すと、サーバーには部屋ができたのに ID がわからず消せなくなる）
-        let params = JoinBattleParams(playerID: playerID, monster: monster.modelName)
+        let params = JoinBattleParams(playerID: playerID, monster: monster.modelName, pairingToken: pairingToken)
         let row: BattleRow = try await Task { [client] in
             try await client.rpc("join_battle", params: params).execute().value
         }.value
@@ -124,7 +126,10 @@ final class SupabaseBattleService: BattleService {
 
         // Realtime を取りこぼしたときのために、ときどきデータベースも直接見る（購読を始める前に入ってきた場合もここで気づく）
         var nextFetch = Date.now
+        let matchingDeadline = Date.now.addingTimeInterval(30)
         while opponentMonsterName == nil {
+            // 双方承諾後に相手が終了した場合も、専用部屋で待ち続けない。
+            guard Date.now < matchingDeadline else { throw ServiceError.opponentLeft }
             if Date.now >= nextFetch {
                 // 通信が一瞬切れても失敗にせず、次の確認を待つ
                 if let battle = try? await fetchBattle(id: row.id) {
@@ -435,10 +440,12 @@ nonisolated private struct ActionRow: Codable, Sendable {
 nonisolated private struct JoinBattleParams: Encodable, Sendable {
     let playerID: UUID
     let monster: String
+    let pairingToken: UUID?
 
     enum CodingKeys: String, CodingKey {
         case playerID = "p_player_id"
         case monster = "p_monster"
+        case pairingToken = "p_pairing_token"
     }
 }
 

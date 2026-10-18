@@ -27,7 +27,7 @@ final class CPUBattleService: BattleService {
         self.opponent = opponent
     }
 
-    func findOpponent(monster: Monster) async throws -> Monster {
+    func findOpponent(monster: Monster, pairingToken: UUID?) async throws -> Monster {
         if let opponent {
             return opponent
         }

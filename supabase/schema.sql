@@ -5,8 +5,8 @@
 
 -- 前に作ったテーブルと関数を消す（タイミングバトルで使っていた battle_moves も含む）
 -- テーブルを消すと、Realtime の設定とポリシーも一緒に消える
-drop table if exists battle_actions, battle_moves, battles cascade;
-drop function if exists join_battle, keep_waiting, finish_battle, check_battle_action;
+drop table if exists nearby_pairs, nearby_receivers, battle_actions, battle_moves, battles cascade;
+drop function if exists join_battle, keep_waiting, finish_battle, check_battle_action, nearby_pair;
 
 -- 対戦 1 回ぶん。player1 が部屋を作って待ち、player2 が入ると始まる
 -- 場所は問わず、対戦相手を待っている人どうしで対戦する
@@ -17,6 +17,8 @@ create table battles (
   player1_id uuid not null,
   -- モンスターのモデル名（Monster.modelName。例：'monster-bunny'）
   player1_monster text not null,
+  -- BLE で相互認識した 2 台だけが共有する、一回限りの対戦トークン
+  pairing_token uuid not null,
   player2_id uuid,
   player2_monster text,
   -- 勝った人のプレイヤー ID。決着がつく前や、途中でやめた対戦は null
@@ -102,13 +104,13 @@ revoke update on battles from anon, authenticated;
 create policy "誰でも行動を読める" on battle_actions for select using (true);
 create policy "誰でも行動を送れる" on battle_actions for insert with check (true);
 
--- 待っている相手を探して入る（場所は問わない）。誰もいなければ自分が部屋を作って待つ
+-- BLE で相互認識した、同じ pairing_token の相手だけを探して入る。誰もいなければ自分が部屋を作って待つ
 -- 2 人が同時に呼んでも、ロックで 1 人ずつ順番に処理する
 -- （順番にしないと、待っている部屋がないときに 2 人とも部屋を作り、別々の部屋で待ち続けてしまう）
 -- ロックはトランザクションが終わると外れるので、後の人には先の人が作った部屋が見える
 -- 10 秒以上「まだ待っている」と伝えてこない部屋は、待っていた人がもういない（アプリが落ちたなど）とみなして使わない
 -- 長くすると、待っていた人がいなくなった部屋に入って、動かない相手と対戦してしまう
-create or replace function join_battle(p_player_id uuid, p_monster text)
+create or replace function join_battle(p_player_id uuid, p_monster text, p_pairing_token uuid)
 returns battles
 language plpgsql
 security definer
@@ -125,6 +127,7 @@ begin
     select id from battles
     where status = 'waiting'
       and player1_id <> p_player_id
+      and pairing_token = p_pairing_token
       and last_seen_at > now() - interval '10 seconds'
     order by created_at
     limit 1
@@ -136,14 +139,14 @@ begin
     return joined;
   end if;
 
-  insert into battles (player1_id, player1_monster)
-  values (p_player_id, p_monster)
+  insert into battles (player1_id, player1_monster, pairing_token)
+  values (p_player_id, p_monster, p_pairing_token)
   returning * into joined;
   return joined;
 end;
 $$;
 
-grant execute on function join_battle to anon;
+grant execute on function join_battle(uuid, text, uuid) to anon;
 
 -- 部屋を作って待っている人が、まだ待っていることを伝える（アプリが 3 秒ごとに呼ぶ）
 create or replace function keep_waiting(p_battle_id uuid)
@@ -182,3 +185,92 @@ end;
 $$;
 
 grant execute on function finish_battle to anon;
+
+-- 20261018_nearby_battle_pairing.sql の後に実行する。
+-- BLE は候補の発見にのみ使い、確保・承諾・辞退はこの RPC で共有する。
+create table if not exists nearby_receivers (
+  session_id uuid primary key,
+  last_seen_at timestamptz not null default now(),
+  enabled boolean not null default true
+);
+create table if not exists nearby_pairs (
+  id uuid primary key default gen_random_uuid(),
+  session1 uuid not null,
+  session2 uuid not null check (session1 <> session2),
+  accepted1 boolean not null default false,
+  accepted2 boolean not null default false,
+  status text not null default 'pending' check (status in ('pending', 'ready', 'cancelled', 'expired')),
+  expires_at timestamptz not null default (now() + interval '30 seconds')
+);
+alter table nearby_receivers enable row level security;
+alter table nearby_pairs enable row level security;
+revoke all on nearby_receivers, nearby_pairs from anon, authenticated;
+
+create or replace function nearby_pair(
+  p_session uuid, p_action text, p_peer uuid default null, p_token uuid default null
+)
+returns setof nearby_pairs
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  paired nearby_pairs;
+begin
+  if p_session is null or p_action not in ('poll', 'offer', 'accept', 'stop') or p_action is null then
+    raise exception 'Invalid pairing request';
+  end if;
+  -- A→B、B→C、C→A が同時でも、各端末を確保する処理は必ず直列化する。
+  perform pg_advisory_xact_lock(hashtext('nearby_pair'));
+  update nearby_pairs set status = 'expired'
+    where status in ('pending', 'ready') and expires_at <= now();
+
+  if p_action = 'stop' then
+    insert into nearby_receivers(session_id, enabled) values (p_session, false)
+      on conflict (session_id) do update set enabled = false;
+    update nearby_pairs set status = 'cancelled'
+      where status = 'pending' and p_session in (session1, session2);
+    return;
+  end if;
+
+  insert into nearby_receivers(session_id) values (p_session)
+    on conflict (session_id) do update set last_seen_at = now();
+  -- 停止と処理中の offer が前後しても、停止済みの受付は復活させない。
+  if not (select enabled from nearby_receivers where session_id = p_session) then return; end if;
+
+  if p_token is not null then
+    select * into paired from nearby_pairs
+      where id = p_token and p_session in (session1, session2);
+  else
+    select * into paired from nearby_pairs
+      where status in ('pending', 'ready') and p_session in (session1, session2)
+      limit 1;
+  end if;
+
+  if paired.id is null and p_token is null and p_action = 'offer' and p_peer is not null and p_peer <> p_session then
+    -- 相手も受付中であることを確認する。別の相手と確保済みなら割り込まない。
+    if exists (select 1 from nearby_receivers where session_id = p_peer and enabled
+                 and last_seen_at > now() - interval '5 seconds')
+       and not exists (select 1 from nearby_pairs where status in ('pending', 'ready')
+                         and p_peer in (session1, session2)) then
+      insert into nearby_pairs(session1, session2) values (p_session, p_peer)
+        returning * into paired;
+    end if;
+  end if;
+
+  if paired.id is null then return; end if;
+  if paired.status = 'pending' and p_action = 'accept' and paired.id = p_token then
+    update nearby_pairs set
+      accepted1 = accepted1 or session1 = p_session,
+      accepted2 = accepted2 or session2 = p_session
+      where id = paired.id returning * into paired;
+    if paired.accepted1 and paired.accepted2 then
+      update nearby_pairs set status = 'ready', expires_at = now() + interval '30 seconds'
+        where id = paired.id returning * into paired;
+    end if;
+  end if;
+  return next paired;
+end;
+$$;
+revoke all on function nearby_pair(uuid, text, uuid, uuid) from public;
+grant execute on function nearby_pair(uuid, text, uuid, uuid) to anon;

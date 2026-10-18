@@ -15,7 +15,7 @@ struct BattleLobbyComponent: View {
     let isCancelling: Bool
     /// 対戦できなかったとき（通信の失敗、相手が抜けた）のメッセージ
     let errorMessage: String?
-    let onFind: () -> Void
+    let onFind: (() -> Void)?
     let onCancel: () -> Void
     /// 野生のモンスターとのバトルなら、相手のモンスター。ほかのプレイヤーとの対戦なら nil（相手は探すまでわからない）
     var wildMonster: Monster? = nil
@@ -44,7 +44,7 @@ struct BattleLobbyComponent: View {
             }
 
             Text(wildMonster.map { "野生の\($0.name)が勝負をしかけてきた！勝つと捕まえられます。画面をタップして攻撃しよう" }
-                 ?? "「バトルする」を押した人どうしで対戦できます。画面をタップして攻撃しよう")
+                 ?? "マップ画面で対戦受付をオンにし、近くの相手と確認してから対戦します。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -71,13 +71,18 @@ struct BattleLobbyComponent: View {
                             .buttonStyle(BattleButtonStyle(color: .white))
                     }
                 }
-            } else {
+            } else if let onFind {
                 Button("バトルする", action: onFind)
                     .buttonStyle(BattleButtonStyle())
                 if let onFlee {
                     Button("にげる", action: onFlee)
                         .buttonStyle(BattleButtonStyle(color: .white))
                 }
+            } else {
+                Text("近くの対戦相手を探すには、マップ画面へ戻ってください")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
         }
     }
@@ -116,7 +121,7 @@ private struct LobbyMonsterComponent: View {
         isSearching: false,
         isCancelling: false,
         errorMessage: nil,
-        onFind: {},
+        onFind: nil,
         onCancel: {}
     )
     .padding()

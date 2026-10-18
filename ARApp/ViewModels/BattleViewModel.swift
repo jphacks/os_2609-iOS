@@ -7,7 +7,7 @@ import Foundation
 import Observation
 
 /// 対戦画面の状態と、バトルの進行
-/// 「バトルする」を押した人どうしをマッチングし（場所は問わない）、お互いにタップで攻撃し合う
+/// 野生モンスターとの対戦、または BLE で双方が承諾した相手との対戦を進める
 /// 通常攻撃はスタミナを使い、使い切ると休憩になる。攻撃するたびにフィーバーの抽選をし、ときどきチャンスになる
 /// 必殺技はゲージが満タンになると自動で撃つ。相手の必殺技は、予告している間にスワイプするとよけられる
 /// 自分の行動はすぐに反映して相手に送り、相手の行動は届いた順に反映する（どちらも BattleEngine で計算する）
@@ -152,9 +152,11 @@ final class BattleViewModel {
     /// へとへとで休憩中か。休憩しているかは stamina だけが持つ（攻撃できるかの判断と画面の表示で食い違わないように）
     var isResting: Bool { stamina.isResting(at: .now) }
 
-    /// 「バトルする」が押されたときに呼ぶ。対戦相手を探し、誰も待っていなければ相手が来るまで待つ
-    func findOpponent() {
+    /// 近接対戦では双方承諾済みのトークン、野生の CPU 対戦では nil を使う。
+    func findOpponent(pairingToken: UUID? = nil) {
         guard phase == .lobby else { return }
+        // マップから開始する場合も、編成で最後に選んだモンスターを使う。
+        reloadMyMonster()
         phase = .searching
         errorMessage = nil
         searchTask = Task { [leaveTask] in
@@ -163,7 +165,7 @@ final class BattleViewModel {
             // 片付けを待っている間に「やめる」が押されていたら、相手を探さない
             guard !Task.isCancelled else { return }
             do {
-                let opponentMonster = try await service.findOpponent(monster: myMonster)
+                let opponentMonster = try await service.findOpponent(monster: myMonster, pairingToken: pairingToken)
                 guard !Task.isCancelled else { return }
                 startBattle(against: opponentMonster)
             } catch {

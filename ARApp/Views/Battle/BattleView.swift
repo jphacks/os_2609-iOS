@@ -40,6 +40,12 @@ struct BattleView: View {
         self.wildBattle = wildBattle
     }
 
+    /// マルチ対戦では、マップ画面と同じ ViewModel を受け取る。
+    init(viewModel: BattleViewModel) {
+        _viewModel = State(initialValue: viewModel)
+        wildBattle = nil
+    }
+
     var body: some View {
         content
             // 対戦中はタブバーを隠し、全画面で戦う（途中で別のタブに移れないようにもなる）
@@ -83,7 +89,7 @@ struct BattleView: View {
                 isSearching: viewModel.phase == .searching || viewModel.phase == .cancellingSearch,
                 isCancelling: viewModel.phase == .cancellingSearch,
                 errorMessage: viewModel.errorMessage,
-                onFind: { viewModel.findOpponent() },
+                onFind: wildBattle == nil ? nil : { viewModel.findOpponent() },
                 onCancel: { viewModel.cancelSearch() },
                 wildMonster: wildBattle?.monster,
                 onFlee: wildBattle?.onFlee
