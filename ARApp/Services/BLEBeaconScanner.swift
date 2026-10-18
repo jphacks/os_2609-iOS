@@ -14,6 +14,8 @@ final class BLEBeaconScanner: NSObject, BeaconScanner, CBCentralManagerDelegate 
     var onReceive: ((_ beaconName: String, _ rssi: Int) -> Void)?
 
     private var centralManager: CBCentralManager?
+    private let advertisementAuthenticator = BeaconAdvertisementAuthenticator()
+    private var latestAuthenticatedCounter: [String: AuthenticatedCounter] = [:]
 
     func start() {
         guard centralManager == nil else { return }
@@ -51,7 +53,38 @@ final class BLEBeaconScanner: NSObject, BeaconScanner, CBCentralManagerDelegate 
             let beaconName = Self.beaconName(for: advertisedName),
             RSSI.intValue != Self.unavailableRSSI
         else { return }
+
+        guard let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
+              let counter = advertisementAuthenticator.authenticatedCounter(
+                advertisedName: beaconName,
+                manufacturerData: manufacturerData
+              ),
+              accepts(counter: counter, for: beaconName)
+        else { return }
+
         onReceive?(beaconName, RSSI.intValue)
+    }
+
+    /// Rejects stale counters while a beacon is continuously visible.
+    /// Equal values are expected: one signed advertisement is repeated for 30 seconds.
+    /// A 90-second absence window permits a legitimate beacon restart, whose
+    /// counter begins at zero again.
+    private func accepts(counter: UInt32, for beaconName: String) -> Bool {
+        let now = Date.now
+
+        guard let latestCounter = latestAuthenticatedCounter[beaconName] else {
+            latestAuthenticatedCounter[beaconName] = AuthenticatedCounter(value: counter, seenAt: now)
+            return true
+        }
+        if now.timeIntervalSince(latestCounter.seenAt) >= 90 {
+            latestAuthenticatedCounter[beaconName] = AuthenticatedCounter(value: counter, seenAt: now)
+            return true
+        }
+        guard counter >= latestCounter.value else {
+            return false
+        }
+        latestAuthenticatedCounter[beaconName] = AuthenticatedCounter(value: counter, seenAt: now)
+        return true
     }
 
     /// 広告名の前後の空白や大文字・小文字の違いを吸収して、登録済みの正式なビーコン名を返す
@@ -61,4 +94,9 @@ final class BLEBeaconScanner: NSObject, BeaconScanner, CBCentralManagerDelegate 
             $0.compare(normalized, options: .caseInsensitive) == .orderedSame
         }
     }
+}
+
+private struct AuthenticatedCounter {
+    let value: UInt32
+    let seenAt: Date
 }

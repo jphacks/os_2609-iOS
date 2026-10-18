@@ -24,6 +24,31 @@ enum LocationConfidence {
     }
 }
 
+/// 停止中に採取した、フィンガープリント辞書へ追加できる RSSI の組
+struct RSSIFingerprintRegistration: Identifiable {
+    let id = UUID()
+    let values: [String: Int]
+    let sampleCounts: [String: Int]
+
+    /// `Location` の `fingerprint` にそのまま貼り付けられる形式
+    var dictionaryLiteral: String {
+        let lines = Location.beaconIDs.compactMap { beaconName -> String? in
+            guard let value = values[beaconName] else { return nil }
+            return "    \"\(beaconName)\": \(value),"
+        }
+        return "fingerprint: [\n" + lines.joined(separator: "\n") + "\n]"
+    }
+
+    var qualitySummary: String {
+        let minimumSampleCount = sampleCounts.values.min() ?? 0
+        return "停止状態で3秒間の中央値を採用・6/6台受信・各ビーコン最低\(minimumSampleCount)件"
+    }
+}
+
+struct RSSIFingerprintRegistrationError: Error {
+    let message: String
+}
+
 /// ビーコンの RSSI から、最寄りのチェックポイントを推定する
 /// RSSI は正確な座標には使わず、会場内の粗いエリア判定にだけ使う
 @Observable
@@ -44,6 +69,8 @@ final class LocationViewModel {
     static let consecutiveMotionSamplesRequired = 5
     /// 現在地を確定後、多少の動きや電波の揺れで地点を切り替えない保持時間（秒）
     static let locationHoldDuration: TimeInterval = 5
+    /// フィンガープリント登録時、3秒の測定窓内に各ビーコンで必要な最小受信数
+    static let minimumRegistrationSamplesPerBeacon = 3
 
     /// 推定した最寄りチェックポイント
     private(set) var currentLocation: Location?
@@ -123,6 +150,42 @@ final class LocationViewModel {
         isMoving = false
         isPreparingEstimate = false
         resetEstimate()
+    }
+
+    /// フィンガープリントとして保存できる状態なら、平滑化済みの RSSI を返す。
+    /// AR 画面の長押し登録 UI からだけ呼ぶため、登録候補は移動中の値を含まない。
+    func fingerprintRegistration() -> Result<RSSIFingerprintRegistration, RSSIFingerprintRegistrationError> {
+        guard !isMoving else {
+            return .failure(RSSIFingerprintRegistrationError(message: "移動中です。止まってから登録してください。"))
+        }
+        guard !isPreparingEstimate else {
+            return .failure(RSSIFingerprintRegistrationError(message: "停止を確認中です。3秒ほど静止してから登録してください。"))
+        }
+
+        let missingBeaconNames = Location.beaconIDs.filter { currentRSSI[$0] == nil }
+        guard missingBeaconNames.isEmpty else {
+            return .failure(RSSIFingerprintRegistrationError(
+                message: "未受信のビーコンがあります: \(missingBeaconNames.joined(separator: ", "))"
+            ))
+        }
+
+        let sampleCounts = Dictionary(uniqueKeysWithValues: Location.beaconIDs.map {
+            ($0, samples[$0]?.count ?? 0)
+        })
+        let undersampledBeaconNames = Location.beaconIDs.filter {
+            (sampleCounts[$0] ?? 0) < Self.minimumRegistrationSamplesPerBeacon
+        }
+        guard undersampledBeaconNames.isEmpty else {
+            return .failure(RSSIFingerprintRegistrationError(
+                message: "受信数が不足しています（各ビーコン最低\(Self.minimumRegistrationSamplesPerBeacon)件）: "
+                    + undersampledBeaconNames.joined(separator: ", ")
+            ))
+        }
+
+        let values = Dictionary(uniqueKeysWithValues: Location.beaconIDs.compactMap { beaconName in
+            currentRSSI[beaconName].map { (beaconName, $0) }
+        })
+        return .success(RSSIFingerprintRegistration(values: values, sampleCounts: sampleCounts))
     }
 
     /// ビーコンを受信するたびに、時間付きで記録する
